@@ -17,7 +17,7 @@ safecc 是面向 macOS 与 Windows 的本地环境检查和私人网络部署工
 
 ## 当前状态
 
-当前已具备可运行的 React/Vite 原型和 Tauri 2 原生壳；已接入本机 HTTPS 订阅预检与受保护快照、订阅确认后自动登记为 Clash Verge Rev remote profile、VPS SSH 主机指纹预检与 Debian 12/13 只读检查、明确审批后的 CCBaga 网络脚本分阶段部署与私有 Clash YAML 取回、Clash 配置快照/恢复、按地区申请系统权限与地区快照恢复、Chrome/Edge 浏览器偏好备份与安全写入、标准缓存清理、按所选地区一键编排本机步骤、真实验收页确认及本地脱敏验收记录（含线路别名、托管版本和逐项确认状态）。部署阶段不会在未确认时执行远端变更；真实 VPS 部署、Clash 运行态和检测页仍必须由用户在目标环境中复核。Safari/Firefox 自动写入和订阅后台自动更新仍需后续接入；Windows x64 同时提供 MSVC/CI 构建入口和 macOS 本地 GNU 交叉构建入口，安装包仍需在真实 Windows 机器上启动验收。首版范围、配置矩阵和验收条件见 [产品与技术方案](docs/product-and-architecture.md)。
+当前已具备可运行的 React/Vite 原型和 Tauri 2 原生壳；已接入本机 HTTPS 订阅预检与受保护快照、订阅确认后自动登记为 Clash Verge Rev remote profile、VPS SSH 主机指纹预检与 Debian 12/13 只读检查、网络部署脚本分阶段部署与私有 Clash YAML 取回、Clash 配置快照/恢复、按地区申请系统权限与地区快照恢复、Chrome/Edge 浏览器偏好备份与安全写入、标准缓存清理、按所选地区一键编排本机步骤、真实验收页确认及本地脱敏验收记录（含线路别名、托管版本和逐项确认状态）。部署阶段不会在未确认时执行远端变更；真实 VPS 部署、Clash 运行态和检测页仍必须由用户在目标环境中复核。Safari/Firefox 自动写入和订阅后台自动更新仍需后续接入；Windows x64 同时提供 MSVC/CI 构建入口和 macOS 本地 GNU 交叉构建入口，安装包仍需在真实 Windows 机器上启动验收。首版范围、配置矩阵和验收条件见 [产品与技术方案](docs/product-and-architecture.md)。
 
 ## 本地开发
 
@@ -50,11 +50,4 @@ Windows x64 构建入口已固定为 `scripts/build-windows.ps1`（也可双击 
 ```
 
 该本地交叉构建使用 `x86_64-pc-windows-gnu`，输出 `artifacts/safecc-windows-x64-setup.exe` 和对应的 SHA-256 文件；当前 SHA-256 为 `209158e5448263e99483bd72898a59826765a981ffdaed310f453e7bfc6c033e`。Windows 机器与 CI 仍优先使用 MSVC/NSIS 流程。安装包需要在真实 Windows 机器上启动并完成系统权限、Clash 运行态和检测页复核。
-
-## 参考项目
-
-- [CCBaga](https://github.com/liseami/CCBaga)：本地身份、独立浏览器、系统设置和环境核验。
-- [小小东 VPS](https://github.com/nevertoday/xiaoxiaodong-vps)：私人 VPS 部署、订阅、分流和维护流程。
-
-两者均为 MIT 许可。后续复用代码时将保留原始许可证、版权声明和第三方 notices。
 
