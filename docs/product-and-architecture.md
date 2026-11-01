@@ -142,7 +142,7 @@ Remote VPS
 
 | 层 | 选择 | 原因 |
 | --- | --- | --- |
-| 桌面壳 | Tauri 2 + Rust | 安装包较小，原生权限和进程边界清楚，可复用 CCBaga 经验 |
+| 桌面壳 | Tauri 2 + Rust | 安装包较小，原生权限和进程边界清楚，便于实现跨平台权限确认 |
 | UI | React + TypeScript | 跨平台共享，适合向导、进度和诊断报告 |
 | 本地数据库 | SQLite | 保存任务状态、非秘密元数据、审计记录和恢复点 |
 | 秘密存储 | macOS Keychain / Windows Credential Manager | 不把密码、密钥或订阅地址写进日志和普通配置 |
