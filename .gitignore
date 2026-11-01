@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Tauri build outputs (added when the native shell is introduced)
+src-tauri/target/
+src-tauri/gen/

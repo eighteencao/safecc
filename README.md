@@ -1,1 +1,60 @@
 # safecc
+
+safecc 是面向 macOS 与 Windows 的本地环境检查和私人网络部署工具。
+
+本项目的目标是帮助用户建立一致、可验证、可恢复的 Claude 使用环境，包括：
+
+- 检查并配置本机与默认浏览器的时区、语言、地区和定位权限；Chrome/Edge 自动配置时会在备份后关闭浏览器 DoH，让 DNS 回到 Clash TUN；
+- 接入自建 VPS、静态 IP 订阅或机场订阅，并统一导入 Clash Verge Rev；
+- 第一步提供搬瓦工（BandwagonHost）和 DMIT 官方 VPS 入口，仅跳转访问，不代购或填写付款信息；
+- 配置 Clash Verge Rev 的规则模式、TUN、DNS 劫持和 UDP 路由；
+- 清理经过用户确认的本机与浏览器缓存，不删除登录和个人资料；
+- 在最后一步先由用户登录 Claude，再关闭客户端定位权限，并协助关闭“改进 AI / 帮助改进模型”设置；safecc 不接收账号密码；
+- 在导入和配置后使用指定检测页重新验收真实出口；
+- 对所有高风险操作给出变更预览、明确确认和回滚路径。
+
+本项目不会承诺“防封”或保证账号可用。本地设置无法改变服务端风控记录，账号状态还受到服务条款、付款、地区资格、账号历史和使用行为等因素影响。
+
+## 当前状态
+
+当前已具备可运行的 React/Vite 原型和 Tauri 2 原生壳；已接入本机 HTTPS 订阅预检与受保护快照、订阅确认后自动登记为 Clash Verge Rev remote profile、VPS SSH 主机指纹预检与 Debian 12/13 只读检查、明确审批后的 CCBaga 网络脚本分阶段部署与私有 Clash YAML 取回、Clash 配置快照/恢复、按地区申请系统权限与地区快照恢复、Chrome/Edge 浏览器偏好备份与安全写入、标准缓存清理、按所选地区一键编排本机步骤、真实验收页确认及本地脱敏验收记录（含线路别名、托管版本和逐项确认状态）。部署阶段不会在未确认时执行远端变更；真实 VPS 部署、Clash 运行态和检测页仍必须由用户在目标环境中复核。Safari/Firefox 自动写入和订阅后台自动更新仍需后续接入；Windows x64 同时提供 MSVC/CI 构建入口和 macOS 本地 GNU 交叉构建入口，安装包仍需在真实 Windows 机器上启动验收。首版范围、配置矩阵和验收条件见 [产品与技术方案](docs/product-and-architecture.md)。
+
+## 本地开发
+
+```bash
+npm install
+npm run dev          # 浏览器预览
+npm run tauri:dev    # Tauri 本机窗口（需要 Rust 与平台桌面依赖）
+npm run build
+cargo check --manifest-path src-tauri/Cargo.toml
+```
+
+## 当前可安装产物
+
+在 Apple Silicon macOS 上，当前可直接解压产物位于 [`artifacts/safecc-macos-arm64.app.zip`](artifacts/safecc-macos-arm64.app.zip)；解压后将 `safecc.app` 拖到“应用程序”即可。当前包为本机 ad-hoc 签名，首次打开若被 Gatekeeper 拦截，请在“系统设置 → 隐私与安全性”中手动允许。DMG 在当前机器上因磁盘映像设备不可用未生成。
+
+当前包 SHA-256：`0d2e38d5671101443fa7745306749717657dbeb53779ec7c2b24dec521807267`
+
+Windows x64 构建入口已固定为 `scripts/build-windows.ps1`（也可双击 `scripts/build-windows.cmd`）。它会检查 Rust MSVC 目标、执行 `npm ci`、前端构建和 Tauri NSIS 打包，最后输出安装包 SHA-256。Windows 机器上运行：
+
+```powershell
+./scripts/build-windows.ps1
+```
+
+同样的流程已放入 `.github/workflows/build-windows.yml`，可手动触发或推送 `v*` 标签后生成 `safecc-windows-x64` 构建产物。当前工作区还提供了本机交叉构建产物，已生成但尚未在真实 Windows 机器启动验收：[`artifacts/safecc-windows-x64-setup.exe`](artifacts/safecc-windows-x64-setup.exe)。
+
+如果需要在 macOS 主机本地生成 Windows x64 安装包，可先安装 `rustup`、`cargo-zigbuild`、`zig`、`makensis` 和 `mingw-w64`，再运行：
+
+```bash
+./scripts/build-windows-cross.sh
+```
+
+该本地交叉构建使用 `x86_64-pc-windows-gnu`，输出 `artifacts/safecc-windows-x64-setup.exe` 和对应的 SHA-256 文件；当前 SHA-256 为 `209158e5448263e99483bd72898a59826765a981ffdaed310f453e7bfc6c033e`。Windows 机器与 CI 仍优先使用 MSVC/NSIS 流程。安装包需要在真实 Windows 机器上启动并完成系统权限、Clash 运行态和检测页复核。
+
+## 参考项目
+
+- [CCBaga](https://github.com/liseami/CCBaga)：本地身份、独立浏览器、系统设置和环境核验。
+- [小小东 VPS](https://github.com/nevertoday/xiaoxiaodong-vps)：私人 VPS 部署、订阅、分流和维护流程。
+
+两者均为 MIT 许可。后续复用代码时将保留原始许可证、版权声明和第三方 notices。
+

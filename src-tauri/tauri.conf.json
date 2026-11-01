@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "safecc",
+  "version": "0.1.0",
+  "identifier": "ai.claude.environment-assistant",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "safecc · Claude 环境安全助手",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 980,
+        "minHeight": 680,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": ["../deployment/ccbaga-network"],
+    "category": "Utility",
+    "shortDescription": "可检查、可配置、可恢复的 safecc Claude 环境助手",
+    "longDescription": "统一管理线路订阅、本机环境检查与安全验收。"
+  }
+}
