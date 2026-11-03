@@ -47,6 +47,7 @@ npm --prefix "$ROOT_DIR" run build
 cargo zigbuild \
   --manifest-path "$ROOT_DIR/src-tauri/Cargo.toml" \
   --release \
+  --features tauri/custom-protocol \
   --target "$TARGET"
 
 binary="$ROOT_DIR/src-tauri/target/$TARGET/release/claude_environment_assistant.exe"

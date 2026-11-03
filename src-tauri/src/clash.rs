@@ -197,7 +197,7 @@ pub fn import_subscription(
     if !matches!(source_kind.as_str(), "static" | "airport") {
         return Err("当前来源不是可自动导入的 HTTPS 订阅".to_string());
     }
-    if !is_supported_region(&target_region) {
+    if !crate::region::is_supported_region(&target_region) {
         return Err("目标地区不受支持，已停止导入".to_string());
     }
     source::validate_subscription_url(input.trim())?;
@@ -220,7 +220,7 @@ pub fn import_local_subscription(
     if !confirmed {
         return Err("导入 VPS 本地订阅到 Clash Verge Rev 前必须明确确认影响范围".to_string());
     }
-    if !is_supported_region(&target_region) {
+    if !crate::region::is_supported_region(&target_region) {
         return Err("目标地区不受支持，已停止导入".to_string());
     }
     let body = source::load_snapshot(&snapshot_id)?;
@@ -358,13 +358,6 @@ fn is_safe_profile_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-}
-
-fn is_supported_region(value: &str) -> bool {
-    matches!(
-        value,
-        "美国 · 洛杉矶" | "美国 · 纽约" | "日本 · 东京" | "新加坡" | "英国 · 伦敦"
-    )
 }
 
 fn append_profile(

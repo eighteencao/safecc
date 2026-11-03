@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="128" fill="#10151d"/>
-  <rect x="96" y="96" width="320" height="320" rx="88" fill="#c4f06d"/>
-  <path d="M184 170h58c54 0 86 30 86 83s-32 89-86 89h-58V170Zm52 46v80h9c22 0 34-18 34-43 0-23-12-37-34-37h-9Z" fill="#182018"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">safecc</title>
+  <rect width="512" height="512" rx="116" fill="#10151d"/>
+  <path d="M354 145 A152 152 0 1 0 354 367" fill="none" stroke="#c4f06d" stroke-width="58" stroke-linecap="round"/>
+  <path d="M315 216 A72 72 0 1 0 315 296" fill="none" stroke="#edf7d5" stroke-width="34" stroke-linecap="round"/>
 </svg>

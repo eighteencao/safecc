@@ -7,6 +7,7 @@ mod clash;
 mod deployment;
 mod open;
 mod platform;
+mod profiles;
 mod region;
 mod source;
 mod verification;
@@ -217,6 +218,29 @@ fn open_safe_target(target: String) -> Result<(), String> {
     open::open_target(target)
 }
 
+#[tauri::command]
+fn list_environment_profiles() -> Result<Vec<profiles::EnvironmentProfile>, String> {
+    profiles::list()
+}
+
+#[tauri::command]
+fn create_environment_profile(
+    name: String,
+    target_region: String,
+    confirm: bool,
+) -> Result<profiles::EnvironmentProfile, String> {
+    profiles::create(name, target_region, confirm)
+}
+
+#[tauri::command]
+fn open_environment_profile(
+    profile_id: String,
+    action: String,
+    confirm: bool,
+) -> Result<(), String> {
+    profiles::open(profile_id, action, confirm)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -241,7 +265,10 @@ pub fn run() {
             get_cache_plan,
             clear_safe_cache,
             record_verification,
-            open_safe_target
+            open_safe_target,
+            list_environment_profiles,
+            create_environment_profile,
+            open_environment_profile
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

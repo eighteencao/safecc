@@ -36,7 +36,7 @@ pub fn record(
     if !confirmed {
         return Err("保存验收记录前必须明确确认检测页结果".to_string());
     }
-    if !is_supported_region(&target_region) {
+    if !crate::region::is_supported_region(&target_region) {
         return Err("目标地区不受支持，已停止保存验收记录".to_string());
     }
     validate_route_alias(&route_alias)?;
@@ -99,13 +99,6 @@ fn normalize_checks(mut checks: Vec<String>) -> Result<Vec<String>, String> {
     Ok(checks)
 }
 
-fn is_supported_region(value: &str) -> bool {
-    matches!(
-        value,
-        "美国 · 洛杉矶" | "美国 · 纽约" | "日本 · 东京" | "新加坡" | "英国 · 伦敦"
-    )
-}
-
 fn verification_root() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
@@ -158,12 +151,13 @@ fn io_error(action: &str, error: io::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_supported_region, normalize_checks, validate_route_alias, REQUIRED_CHECKS};
+    use super::{normalize_checks, validate_route_alias, REQUIRED_CHECKS};
 
     #[test]
     fn only_supported_regions_are_recordable() {
-        assert!(is_supported_region("日本 · 东京"));
-        assert!(!is_supported_region("未知地区"));
+        assert!(crate::region::is_supported_region("日本 · 东京"));
+        assert!(crate::region::is_supported_region("澳大利亚 · 悉尼"));
+        assert!(!crate::region::is_supported_region("未知地区"));
     }
 
     #[test]

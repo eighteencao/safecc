@@ -8,6 +8,7 @@ safecc 是面向 macOS 与 Windows 的本地环境检查和私人网络部署工
 - 接入自建 VPS、静态 IP 订阅或机场订阅，并统一导入 Clash Verge Rev；
 - 第一步提供搬瓦工（BandwagonHost）和 DMIT 官方 VPS 入口，仅跳转访问，不代购或填写付款信息；
 - 配置 Clash Verge Rev 的规则模式、TUN、DNS 劫持和 UDP 路由；
+- 为不同 Claude 账号建立独立本机档案：每份档案各有 `CLAUDE_CONFIG_DIR`、Chromium `--user-data-dir` 与单独启动入口，不复制默认 `~/.claude` 的凭证；
 - 清理经过用户确认的本机与浏览器缓存，不删除登录和个人资料；
 - 在最后一步先由用户登录 Claude，再关闭客户端定位权限，并协助关闭“改进 AI / 帮助改进模型”设置；safecc 不接收账号密码；
 - 在导入和配置后使用指定检测页重新验收真实出口；
@@ -33,7 +34,11 @@ cargo check --manifest-path src-tauri/Cargo.toml
 
 在 Apple Silicon macOS 上，当前可直接解压产物位于 [`artifacts/safecc-macos-arm64.app.zip`](artifacts/safecc-macos-arm64.app.zip)；解压后将 `safecc.app` 拖到“应用程序”即可。当前包为本机 ad-hoc 签名，首次打开若被 Gatekeeper 拦截，请在“系统设置 → 隐私与安全性”中手动允许。DMG 在当前机器上因磁盘映像设备不可用未生成。
 
-当前包 SHA-256：`0d2e38d5671101443fa7745306749717657dbeb53779ec7c2b24dec521807267`
+当前包 SHA-256：`83d2b9a84c0ec5d1b13aaf42320892a1265b0e896fc59938d77b34b9672aaed9`
+
+## 多账号档案的边界
+
+safecc 的账号档案用于隔离同一台设备上的 Claude CLI 配置目录和 Chromium 浏览器 Profile。创建时只生成空目录与启动脚本，不读取、复制或展示任何已有 Token、Cookie、密码或 Claude 页面内容。档案不是独立设备：系统时区、硬件指纹、浏览器引擎特征和同一时刻的 Clash 活动出口仍由整机共享。不同地区的档案需要切换 Clash 出口，并重新执行本机地区和验收步骤；safecc 不把档案隔离表述为账号安全保证。
 
 Windows x64 构建入口已固定为 `scripts/build-windows.ps1`（也可双击 `scripts/build-windows.cmd`）。它会检查 Rust MSVC 目标、执行 `npm ci`、前端构建和 Tauri NSIS 打包，最后输出安装包 SHA-256。Windows 机器上运行：
 
@@ -49,5 +54,5 @@ Windows x64 构建入口已固定为 `scripts/build-windows.ps1`（也可双击 
 ./scripts/build-windows-cross.sh
 ```
 
-该本地交叉构建使用 `x86_64-pc-windows-gnu`，输出 `artifacts/safecc-windows-x64-setup.exe` 和对应的 SHA-256 文件；当前 SHA-256 为 `209158e5448263e99483bd72898a59826765a981ffdaed310f453e7bfc6c033e`。Windows 机器与 CI 仍优先使用 MSVC/NSIS 流程。安装包需要在真实 Windows 机器上启动并完成系统权限、Clash 运行态和检测页复核。
+该本地交叉构建使用 `x86_64-pc-windows-gnu`，输出 `artifacts/safecc-windows-x64-setup.exe` 和对应的 SHA-256 文件；当前 SHA-256 为 `c85d106f0a8dd56b352f73eea8632067db05e02fd871e8bf8df74e421444c595`。Windows 机器与 CI 仍优先使用 MSVC/NSIS 流程。安装包需要在真实 Windows 机器上启动并完成系统权限、Clash 运行态和检测页复核。
 

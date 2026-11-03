@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getRegionConfig } from "./regions";
 
 export type RuntimeInfo = {
   runtime: "tauri" | "browser";
@@ -224,6 +225,22 @@ export type VerificationRecord = {
   status: string;
 };
 
+export type EnvironmentProfile = {
+  id: string;
+  name: string;
+  targetRegion: string;
+  createdAtUnixMs: number;
+  claudeConfigDir: string;
+  browserProfileDir: string;
+  launcherPath: string;
+  browser: string;
+  browserLabel: string;
+  browserAvailable: boolean;
+  previewOnly: boolean;
+  isolation: string[];
+  warnings: string[];
+};
+
 const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 export async function getRuntimeInfo(): Promise<RuntimeInfo> {
@@ -389,14 +406,7 @@ export async function restoreClashBackup(backupId: string, confirm: boolean): Pr
 
 export async function getRegionChangePlan(targetRegion: string): Promise<RegionChangePlan> {
   if (inTauri()) return invoke<RegionChangePlan>("get_region_change_plan", { targetRegion });
-  const values: Record<string, { timezone: string; locale: string; language: string }> = {
-    "美国 · 洛杉矶": { timezone: "America/Los_Angeles", locale: "en_US", language: "en-US" },
-    "美国 · 纽约": { timezone: "America/New_York", locale: "en_US", language: "en-US" },
-    "日本 · 东京": { timezone: "Asia/Tokyo", locale: "ja_JP", language: "ja-JP" },
-    新加坡: { timezone: "Asia/Singapore", locale: "en_SG", language: "en-SG" },
-    "英国 · 伦敦": { timezone: "Europe/London", locale: "en_GB", language: "en-GB" },
-  };
-  const selected = values[targetRegion] ?? values["美国 · 洛杉矶"];
+  const selected = getRegionConfig(targetRegion);
   return {
     platform: "browser",
     targetRegion,
@@ -436,12 +446,13 @@ export async function restoreRegionSnapshot(snapshotId: string, confirm: boolean
 export async function getBrowserChangePlan(targetRegion: string, defaultBrowser: string | null): Promise<BrowserChangePlan> {
   if (inTauri()) return invoke<BrowserChangePlan>("get_browser_change_plan", { targetRegion, defaultBrowser });
   const browserLabel = defaultBrowser ?? "未识别浏览器";
+  const selected = getRegionConfig(targetRegion);
   return {
     platform: "browser",
     browser: "unknown",
     browserLabel,
     targetRegion,
-    language: targetRegion === "日本 · 东京" ? "ja-JP,ja,en-US,en" : "en-US,en",
+    language: selected.browserLanguage,
     profileExists: false,
     automatic: false,
     actions: ["让浏览器语言偏好与目标地区一致", "将网站定位默认值设为阻止", "时区跟随系统"],
@@ -498,6 +509,70 @@ export async function recordVerification(targetRegion: string, routeAlias: strin
     results: checks.map((check) => ({ check, status: "confirmed" })),
     status: "preview-only",
   };
+}
+
+const PREVIEW_PROFILES_KEY = "safecc.preview.environmentProfiles";
+
+function readPreviewProfiles(): EnvironmentProfile[] {
+  try {
+    const value = window.localStorage.getItem(PREVIEW_PROFILES_KEY);
+    return value ? JSON.parse(value) as EnvironmentProfile[] : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function listEnvironmentProfiles(): Promise<EnvironmentProfile[]> {
+  if (inTauri()) return invoke<EnvironmentProfile[]>("list_environment_profiles");
+  return readPreviewProfiles();
+}
+
+export async function createEnvironmentProfile(name: string, targetRegion: string, confirm: boolean): Promise<EnvironmentProfile> {
+  if (inTauri()) return invoke<EnvironmentProfile>("create_environment_profile", { name, targetRegion, confirm });
+  if (!confirm) throw new Error("创建账号档案前必须确认隔离范围");
+  const profiles = readPreviewProfiles();
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length > 32) throw new Error("档案名称需要 1 至 32 个字符");
+  if (/[\/\\:*?"<>|]/.test(trimmed)) throw new Error("档案名称不能包含路径分隔符或系统保留字符");
+  if (profiles.some((profile) => profile.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) {
+    throw new Error("已存在同名账号档案，请换一个名称");
+  }
+  if (profiles.length >= 8) throw new Error("最多保存 8 个本地账号档案");
+  const timestamp = Date.now();
+  const id = `profile-${timestamp}-preview`;
+  const profile: EnvironmentProfile = {
+    id,
+    name: trimmed,
+    targetRegion,
+    createdAtUnixMs: timestamp,
+    claudeConfigDir: `~/.safecc/profiles/${id}/claude-config`,
+    browserProfileDir: `~/.safecc/profiles/${id}/browser-profile`,
+    launcherPath: `~/.safecc/profiles/${id}/start-claude.command`,
+    browser: "preview",
+    browserLabel: "浏览器预览",
+    browserAvailable: false,
+    previewOnly: true,
+    isolation: [
+      "Claude CLI 使用独立 CLAUDE_CONFIG_DIR，登录凭证与配置不共享",
+      "浏览器使用独立 --user-data-dir，Cookie、站点存储和登录会话不共享",
+      "每个档案目录只保存启动元数据，不读取或复制已有凭证内容",
+    ],
+    warnings: [
+      "系统时区是全机设置；不同地区的档案需要切换 Clash 出口并重新配置地区",
+      "独立档案不等于独立设备：硬件指纹、浏览器引擎特征和公网 IP 仍可能相关",
+      "同一时刻 Clash Verge Rev 只能使用一个活动出口；账号隔离不会创建多个物理网络",
+    ],
+  };
+  window.localStorage.setItem(PREVIEW_PROFILES_KEY, JSON.stringify([...profiles, profile]));
+  return profile;
+}
+
+export async function openEnvironmentProfile(profileId: string, action: "browser" | "claude" | "folder", confirm: boolean): Promise<void> {
+  if (inTauri()) {
+    await invoke<void>("open_environment_profile", { profileId, action, confirm });
+    return;
+  }
+  throw new Error("浏览器预览不会启动隔离浏览器或 Claude CLI，请在 Tauri 本机窗口中操作");
 }
 
 export type OpenTarget = "verification" | "location" | "claude-settings" | "claude-login" | "clash" | "bandwagon" | "dmit";

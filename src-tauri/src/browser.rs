@@ -186,13 +186,19 @@ fn classify(value: Option<&str>) -> BrowserKind {
 }
 
 fn language_for(target_region: &str) -> String {
-    let primary = match target_region {
-        "日本 · 东京" => "ja-JP,ja,en-US,en",
-        "新加坡" => "en-SG,en-US,en",
-        "英国 · 伦敦" => "en-GB,en-US,en",
-        _ => "en-US,en",
-    };
-    primary.to_string()
+    let primary = crate::region::target_language(target_region);
+    let base = primary.split('-').next().unwrap_or("en");
+    if primary == "en-IE" {
+        "en-IE,en-GB,en-US,en".to_string()
+    } else if primary == "en-NZ" {
+        "en-NZ,en-AU,en-US,en".to_string()
+    } else if primary == "en-US" {
+        "en-US,en".to_string()
+    } else if primary.starts_with("en-") {
+        format!("{primary},en-US,en")
+    } else {
+        format!("{primary},{base},en-US,en")
+    }
 }
 
 fn profile_path(browser: BrowserKind) -> Option<PathBuf> {
@@ -377,6 +383,8 @@ mod tests {
     fn target_region_controls_language_order() {
         assert_eq!(language_for("日本 · 东京"), "ja-JP,ja,en-US,en");
         assert_eq!(language_for("美国 · 洛杉矶"), "en-US,en");
+        assert_eq!(language_for("台湾 · 台北"), "zh-TW,zh,en-US,en");
+        assert_eq!(language_for("加拿大 · 温哥华"), "en-CA,en-US,en");
     }
 
     #[test]

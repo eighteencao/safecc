@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { applyBrowserEnvironment, applyClashExtension, applyRegionChange, checkVpsReadOnly, clearSafeCache, createClashBackup, deployVps, getBrowserChangePlan, getCachePlan, getClashChangePlan, getPlatformSnapshot, getRegionChangePlan, getRuntimeInfo, importClashSubscription, importLocalClashSubscription, listClashBackups, openSafeTarget, preflightSource, recordVerification, restoreClashBackup, restoreRegionSnapshot, type BrowserApplyResult, type BrowserChangePlan, type CacheCleanupResult, type CachePlan, type ClashApplyResult, type ClashBackupResult, type ClashBackupSummary, type ClashChangePlan, type ClashImportResult, type ClashRestoreResult, type OpenTarget, type PlatformSnapshot, type RegionApplyResult, type RegionChangePlan, type RegionRestoreResult, type SourcePreflightResult, type VerificationRecord, type VpsCheckResult, type VpsDeployResult } from "./native";
+import { applyBrowserEnvironment, applyClashExtension, applyRegionChange, checkVpsReadOnly, clearSafeCache, createClashBackup, createEnvironmentProfile, deployVps, getBrowserChangePlan, getCachePlan, getClashChangePlan, getPlatformSnapshot, getRegionChangePlan, getRuntimeInfo, importClashSubscription, importLocalClashSubscription, listClashBackups, listEnvironmentProfiles, openEnvironmentProfile, openSafeTarget, preflightSource, recordVerification, restoreClashBackup, restoreRegionSnapshot, type BrowserApplyResult, type BrowserChangePlan, type CacheCleanupResult, type CachePlan, type ClashApplyResult, type ClashBackupResult, type ClashBackupSummary, type ClashChangePlan, type ClashImportResult, type ClashRestoreResult, type EnvironmentProfile, type OpenTarget, type PlatformSnapshot, type RegionApplyResult, type RegionChangePlan, type RegionRestoreResult, type SourcePreflightResult, type VerificationRecord, type VpsCheckResult, type VpsDeployResult } from "./native";
+import { DEFAULT_REGION, REGION_GROUPS } from "./regions";
 
 type SourceKind = "vps" | "static" | "airport";
-type StepId = "source" | "clash" | "local" | "browser" | "cache" | "verify" | "privacy";
+type StepId = "source" | "clash" | "profiles" | "local" | "browser" | "cache" | "verify" | "privacy";
+const runtimeIsPreview = () => typeof window === "undefined" || !("__TAURI_INTERNALS__" in window);
 
 type Step = {
   id: StepId;
@@ -15,11 +17,12 @@ type Step = {
 const steps: Step[] = [
   { id: "source", index: "01", eyebrow: "线路来源", title: "先选你的出口", description: "自建 VPS、静态 IP 或机场订阅，最终都由 Clash Verge Rev 接管。" },
   { id: "clash", index: "02", eyebrow: "Clash Verge Rev", title: "让配置真正生效", description: "在已有订阅配置上写入托管扩展，启用规则模式、TUN、DNS 接管和 UDP 路由。" },
-  { id: "local", index: "03", eyebrow: "本机环境", title: "对齐系统环境", description: "设置目标地区的时区、语言与地区格式，保留可回滚的原值。" },
-  { id: "browser", index: "04", eyebrow: "默认浏览器", title: "检查浏览器边界", description: "处理语言、定位权限和时区继承；不能稳定自动化的项目会明确引导。" },
-  { id: "cache", index: "05", eyebrow: "安全清理", title: "只清理可重建缓存", description: "清除网络与应用缓存，不触碰登录、Cookie、密码、书签和历史。" },
-  { id: "verify", index: "06", eyebrow: "真实验收", title: "确认出口没有绕行", description: "打开指定检测页，核对 Claude、DNS、WebRTC UDP、时区和语言。" },
-  { id: "privacy", index: "07", eyebrow: "最后一步", title: "登录并关闭 Claude 隐私开关", description: "网络验收通过后，先登录 Claude，再处理定位权限与“协助改进 AI”。" },
+  { id: "profiles", index: "03", eyebrow: "账号档案", title: "隔离凭据与浏览器资料", description: "为不同账号建立独立的 Claude CLI 配置目录和 Chromium Profile；不复制已有登录内容。" },
+  { id: "local", index: "04", eyebrow: "本机环境", title: "对齐系统环境", description: "设置目标地区的时区、语言与地区格式，保留可回滚的原值。" },
+  { id: "browser", index: "05", eyebrow: "默认浏览器", title: "检查浏览器边界", description: "处理语言、定位权限和时区继承；不能稳定自动化的项目会明确引导。" },
+  { id: "cache", index: "06", eyebrow: "安全清理", title: "只清理可重建缓存", description: "清除网络与应用缓存，不触碰登录、Cookie、密码、书签和历史。" },
+  { id: "verify", index: "07", eyebrow: "真实验收", title: "确认出口没有绕行", description: "打开指定检测页，核对 Claude、DNS、WebRTC UDP、时区和语言。" },
+  { id: "privacy", index: "08", eyebrow: "最后一步", title: "登录并关闭 Claude 隐私开关", description: "网络验收通过后，先登录 Claude，再处理定位权限与“协助改进 AI”。" },
 ];
 
 const sourceOptions: Array<{ id: SourceKind; name: string; caption: string; detail: string }> = [
@@ -60,7 +63,7 @@ function App() {
   const [sourcePreflight, setSourcePreflight] = useState<SourcePreflightResult | null>(null);
   const [sourcePreflightError, setSourcePreflightError] = useState<string | null>(null);
   const [isPreflightingSource, setIsPreflightingSource] = useState(false);
-  const [targetRegion, setTargetRegion] = useState("美国 · 洛杉矶");
+  const [targetRegion, setTargetRegion] = useState(DEFAULT_REGION);
   const [isConfigured, setIsConfigured] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const [verificationRecord, setVerificationRecord] = useState<VerificationRecord | null>(null);
@@ -114,6 +117,13 @@ function App() {
   const [isQuickConfiguring, setIsQuickConfiguring] = useState(false);
   const [quickConfigStage, setQuickConfigStage] = useState<string | null>(null);
   const [quickConfigError, setQuickConfigError] = useState<string | null>(null);
+  const [environmentProfiles, setEnvironmentProfiles] = useState<EnvironmentProfile[]>([]);
+  const [profileName, setProfileName] = useState("");
+  const [profileConfirmed, setProfileConfirmed] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileNotice, setProfileNotice] = useState<string | null>(null);
+  const [isCreatingProfile, setIsCreatingProfile] = useState(false);
+  const [openingProfileAction, setOpeningProfileAction] = useState<string | null>(null);
 
   const refreshBackups = async () => {
     try {
@@ -129,6 +139,7 @@ function App() {
       .catch(() => setRuntimeLabel("浏览器预览"));
     getPlatformSnapshot().then(setPlatformSnapshot).catch(() => setPlatformSnapshot(null));
     getCachePlan().then(setCachePlan).catch(() => setCachePlan(null));
+    listEnvironmentProfiles().then(setEnvironmentProfiles).catch(() => setEnvironmentProfiles([]));
     refreshBackups();
   }, []);
 
@@ -466,6 +477,44 @@ function App() {
     }
   };
 
+  const handleCreateProfile = async () => {
+    if (!profileConfirmed || isCreatingProfile) return;
+    setProfileError(null);
+    setProfileNotice(null);
+    setIsCreatingProfile(true);
+    try {
+      const profile = await createEnvironmentProfile(profileName, targetRegion, true);
+      setEnvironmentProfiles(await listEnvironmentProfiles());
+      setProfileName("");
+      setProfileConfirmed(false);
+      setProfileNotice(`已创建“${profile.name}”的独立档案；请分别在该浏览器 Profile 与 CLI 窗口中登录。`);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "创建账号档案失败，请检查本机目录权限。");
+    } finally {
+      setIsCreatingProfile(false);
+    }
+  };
+
+  const handleOpenProfile = async (profile: EnvironmentProfile, action: "browser" | "claude" | "folder") => {
+    const key = `${profile.id}:${action}`;
+    if (openingProfileAction) return;
+    setProfileError(null);
+    setProfileNotice(null);
+    setOpeningProfileAction(key);
+    try {
+      await openEnvironmentProfile(profile.id, action, true);
+      setProfileNotice(action === "browser"
+        ? `正在启动“${profile.name}”的隔离浏览器 Profile。`
+        : action === "claude"
+          ? `正在启动“${profile.name}”的独立 Claude CLI 环境。`
+          : `已打开“${profile.name}”的本地档案目录。`);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "无法启动账号档案。");
+    } finally {
+      setOpeningProfileAction(null);
+    }
+  };
+
   const handleVerify = async () => {
     if (isRecordingVerification) return;
     setVerificationError(null);
@@ -508,6 +557,7 @@ function App() {
   const canAdvance = (id: StepId) => {
     if (id === "source") return Boolean(source && subscription.trim() && sourcePreflight && (source !== "vps" || sourcePreflight.status === "preview-only" || (vpsFingerprintConfirmed && vpsCheckResult && vpsDeployResult)));
     if (id === "clash") return isConfigured;
+    if (id === "profiles") return true;
     if (id === "local") return localApplied;
     if (id === "browser") return browserApplied;
     if (id === "cache") return cacheConfirmed;
@@ -529,7 +579,7 @@ function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand-lockup">
-          <div className="brand-mark">C</div>
+          <img className="brand-mark" src="/safecc-mark.svg" alt="safecc" />
           <div>
             <strong>safecc</strong>
             <span>Claude 环境安全助手</span>
@@ -539,7 +589,7 @@ function App() {
         <div className="sidebar-label">配置流程</div>
         <nav className="step-list" aria-label="配置流程">
           {steps.map((step, index) => {
-            const done = step.id === "clash" ? isConfigured : step.id === "local" ? localApplied : step.id === "browser" ? browserApplied : step.id === "cache" ? cacheConfirmed : step.id === "verify" ? isVerified : step.id === "privacy" ? privacyConfirmed : index < activeIndex;
+            const done = step.id === "clash" ? isConfigured : step.id === "profiles" ? environmentProfiles.length > 0 : step.id === "local" ? localApplied : step.id === "browser" ? browserApplied : step.id === "cache" ? cacheConfirmed : step.id === "verify" ? isVerified : step.id === "privacy" ? privacyConfirmed : index < activeIndex;
             const locked = step.id === "privacy" && !isVerified;
             return (
               <button className={`step-item ${activeStep === step.id ? "active" : ""} ${locked ? "locked" : ""}`} key={step.id} onClick={() => setActiveStep(step.id)} disabled={locked} aria-label={locked ? `${step.title}（完成网络验收后解锁）` : step.title}>
@@ -572,6 +622,7 @@ function App() {
 
           {activeStep === "source" && <SourceStep source={source} setSource={setSource} selectedSource={selectedSource} subscription={subscription} setSubscription={setSubscription} vpsKeyPath={vpsKeyPath} setVpsKeyPath={setVpsKeyPath} vpsPpkPath={vpsPpkPath} setVpsPpkPath={setVpsPpkPath} vpsPubPath={vpsPubPath} setVpsPubPath={setVpsPubPath} vpsProxyHost={vpsProxyHost} setVpsProxyHost={setVpsProxyHost} vpsProxyPort={vpsProxyPort} setVpsProxyPort={setVpsProxyPort} vpsProxyUser={vpsProxyUser} setVpsProxyUser={setVpsProxyUser} vpsProxyPassword={vpsProxyPassword} setVpsProxyPassword={setVpsProxyPassword} vpsExpectedIp={vpsExpectedIp} setVpsExpectedIp={setVpsExpectedIp} fingerprintConfirmed={vpsFingerprintConfirmed} setFingerprintConfirmed={setVpsFingerprintConfirmed} vpsCheckConsent={vpsCheckConsent} setVpsCheckConsent={setVpsCheckConsent} vpsCheckResult={vpsCheckResult} vpsCheckError={vpsCheckError} isCheckingVps={isCheckingVps} onVpsCheck={handleVpsCheck} vpsDeployConsent={vpsDeployConsent} setVpsDeployConsent={setVpsDeployConsent} vpsDeployResult={vpsDeployResult} vpsDeployError={vpsDeployError} isDeployingVps={isDeployingVps} onVpsDeploy={handleVpsDeploy} targetRegion={targetRegion} setTargetRegion={setTargetRegion} consent={sourceConsent} setConsent={setSourceConsent} preflight={sourcePreflight} error={sourcePreflightError} isPreflighting={isPreflightingSource} onPreflight={handleSourcePreflight} quickConfigReady={quickConfigReady} quickConfigConfirmed={quickConfigConfirmed} setQuickConfigConfirmed={setQuickConfigConfirmed} isQuickConfiguring={isQuickConfiguring} quickConfigStage={quickConfigStage} quickConfigError={quickConfigError} onQuickConfigure={handleQuickConfigure} onOpenProvider={(target) => handleOpenTarget(target)} />}
           {activeStep === "clash" && <ClashStep isConfigured={isConfigured} plan={clashPlan} backupConfirmed={backupConfirmed} setBackupConfirmed={setBackupConfirmed} backupResult={backupResult} backupError={backupError} clashImportResult={clashImportResult} clashImportError={clashImportError} clashApplyResult={clashApplyResult} clashApplyError={clashApplyError} isBackingUp={isBackingUp} backups={backups} selectedBackupId={selectedBackupId} setSelectedBackupId={setSelectedBackupId} restoreConfirmed={restoreConfirmed} setRestoreConfirmed={setRestoreConfirmed} restoreResult={restoreResult} restoreError={restoreError} isRestoring={isRestoring} onConfigure={handleClashConfigure} onRestore={handleRestore} onOpenClash={() => handleOpenTarget("clash")} />}
+          {activeStep === "profiles" && <ProfilesStep targetRegion={targetRegion} profiles={environmentProfiles} name={profileName} setName={setProfileName} confirmed={profileConfirmed} setConfirmed={setProfileConfirmed} error={profileError} notice={profileNotice} isCreating={isCreatingProfile} openingAction={openingProfileAction} onCreate={handleCreateProfile} onOpen={handleOpenProfile} />}
           {activeStep === "local" && <LocalStep targetRegion={targetRegion} snapshot={platformSnapshot} plan={regionPlan} confirmed={regionConfirmed} setConfirmed={setRegionConfirmed} result={regionResult} error={regionError} isApplying={isApplyingRegion} applied={localApplied} onApply={handleApplyRegion} restoreConfirmed={regionRestoreConfirmed} setRestoreConfirmed={setRegionRestoreConfirmed} restoreResult={regionRestoreResult} restoreError={regionRestoreError} isRestoring={isRestoringRegion} onRestore={handleRestoreRegion} />}
           {activeStep === "browser" && <BrowserStep plan={browserPlan} confirmed={browserConfirmed} setConfirmed={setBrowserConfirmed} result={browserResult} error={browserError} isApplying={isApplyingBrowser} applied={browserApplied} expanded={expanded} setExpanded={setExpanded} onApply={handleApplyBrowser} />}
           {activeStep === "cache" && <CacheStep plan={cachePlan} approval={cacheApproval} setApproval={setCacheApproval} result={cacheResult} error={cacheError} isCleaning={isCleaningCache} confirmed={cacheConfirmed} onClean={handleCacheCleanup} />}
@@ -626,7 +677,7 @@ function SourceStep({ source, setSource, selectedSource, subscription, setSubscr
       <div className="permission-box quick-config-box"><b>一键配置本机</b><p>线路预检通过后，safecc 会按“Clash → 系统地区 → 默认浏览器 → 标准缓存”的顺序执行。系统时区/UAC 权限仍会在真正写入时由系统弹窗请求；不会自动执行 VPS 远端部署，也不会跳过真实验收和最后的 Claude 隐私步骤。</p><label className="confirm-line"><input type="checkbox" checked={quickConfigConfirmed} onChange={(event) => setQuickConfigConfirmed(event.target.checked)} /><span>我确认按“{targetRegion}”执行以上本机配置，并允许逐项出现系统权限提示。</span></label>{quickConfigStage && <small className="quick-config-stage">{quickConfigStage}</small>}{quickConfigError && <p className="error-note">{quickConfigError}</p>}<button className="secondary-button" onClick={onQuickConfigure} disabled={!quickConfigConfirmed || !quickConfigReady || isQuickConfiguring}>{isQuickConfiguring ? "正在按顺序配置本机…" : "按此地区一键配置本机"}<span>→</span></button></div>
       <p className="field-help">预检只验证来源并保护本地副本；不会替你上传订阅，也不会把完整地址写入日志。</p>
     </section>
-    <aside className="card side-card"><span className="mini-label">配置预览</span><h3>目标环境</h3><label className="field-label">地区与出口</label><select value={targetRegion} onChange={(event) => setTargetRegion(event.target.value)}><option>美国 · 洛杉矶</option><option>美国 · 纽约</option><option>日本 · 东京</option><option>新加坡</option><option>英国 · 伦敦</option></select><div className="preview-list"><div><span>接管工具</span><b>Clash Verge Rev</b></div><div><span>模式</span><b>规则 + TUN</b></div><div><span>隐私设置</span><b>最后一步</b></div></div><div className="warning-box"><span>↳</span><p>订阅凭据不会显示在界面、日志或验收记录中。</p></div></aside>
+    <aside className="card side-card"><span className="mini-label">配置预览</span><h3>目标环境</h3><label className="field-label" htmlFor="target-region">目标地区环境</label><select id="target-region" value={targetRegion} onChange={(event) => setTargetRegion(event.target.value)}>{REGION_GROUPS.map((group) => <optgroup label={group.label} key={group.label}>{group.options.map((option) => <option value={option.label} key={option.label}>{option.label}</option>)}</optgroup>)}</select><p className="field-help">共 {REGION_GROUPS.reduce((count, group) => count + group.options.length, 0)} 个常用地区环境。请在 Clash Verge Rev 中选择与目标地区一致的实际出口。</p><div className="preview-list"><div><span>接管工具</span><b>Clash Verge Rev</b></div><div><span>模式</span><b>规则 + TUN</b></div><div><span>隐私设置</span><b>最后一步</b></div></div><div className="warning-box"><span>↳</span><p>订阅凭据不会显示在界面、日志或验收记录中。</p></div></aside>
   </div>;
 }
 
@@ -661,10 +712,50 @@ function ClashStep({ isConfigured, plan, backupConfirmed, setBackupConfirmed, ba
   </div>;
 }
 
+function ProfilesStep({ targetRegion, profiles, name, setName, confirmed, setConfirmed, error, notice, isCreating, openingAction, onCreate, onOpen }: { targetRegion: string; profiles: EnvironmentProfile[]; name: string; setName: (value: string) => void; confirmed: boolean; setConfirmed: (value: boolean) => void; error: string | null; notice: string | null; isCreating: boolean; openingAction: string | null; onCreate: () => void; onOpen: (profile: EnvironmentProfile, action: "browser" | "claude" | "folder") => void }) {
+  const browserName = profiles.find((profile) => profile.browserAvailable)?.browserLabel ?? "Chrome / Edge";
+  return <div className="grid-layout">
+    <section className="card card-large">
+      <div className="card-heading"><div><span className="section-number">C</span><div><h2>创建独立账号档案</h2><p>同一台设备，各自保存 Claude CLI 凭证与浏览器登录会话。</p></div></div><span className={`state-badge ${profiles.length > 0 ? "ready" : ""}`}>{profiles.length > 0 ? `${profiles.length} 个档案` : "待创建"}</span></div>
+      <div className="profile-isolation-grid">
+        <div><span className="profile-isolation-icon">⌘</span><b>Claude CLI</b><small>每个档案一个 CLAUDE_CONFIG_DIR，配置、会话与凭证分开保存。</small></div>
+        <div><span className="profile-isolation-icon">◎</span><b>浏览器 Profile</b><small>通过独立 --user-data-dir 启动 {browserName}，Cookie 与站点存储不共享。</small></div>
+        <div><span className="profile-isolation-icon">↗</span><b>单独登录</b><small>safecc 只生成空目录和入口，不读取、复制或展示已有 Token。</small></div>
+      </div>
+      <label className="field-label profile-name-label" htmlFor="profile-name">档案名称<span>最多 8 个</span></label>
+      <div className="input-with-status"><input id="profile-name" type="text" maxLength={32} autoComplete="off" value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：Claude A / 工作账号" /><span className="input-state">{name.trim() ? `${name.trim().length}/32` : "等待输入"}</span></div>
+      <p className="field-help">默认使用当前目标地区“{targetRegion}”生成浏览器语言参数。系统时区仍是全机共享；切换地区后请重新执行本机地区步骤。</p>
+      <label className="confirm-line"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>我确认创建空档案目录与本地启动入口，不复制默认 <code>~/.claude</code> 或任何现有登录凭证。</span></label>
+      {error && <p className="error-note">{error}</p>}
+      {notice && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>档案操作已执行</b><small>{notice}</small></div></div>}
+      {runtimeIsPreview() && profiles.some((profile) => profile.previewOnly) && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>浏览器预览已保存示例档案</b><small>这里只做界面对照；真实目录、权限与启动入口只在 Tauri 本机窗口中创建。</small></div></div>}
+      <button className="secondary-button" onClick={onCreate} disabled={!confirmed || !name.trim() || isCreating || profiles.length >= 8}>{isCreating ? "正在创建隔离档案…" : "创建独立账号档案"}<span>＋</span></button>
+      <div className="profile-list">
+        <div className="profile-list-heading"><span>本机档案</span><b>{profiles.length} / 8</b></div>
+        {profiles.length === 0 ? <div className="profile-empty"><b>还没有独立档案</b><span>先命名并创建档案，之后可以分别打开浏览器或 CLI 入口。</span></div> : profiles.map((profile) => <article className="profile-card" key={profile.id}>
+          <div className="profile-card-heading"><span className="profile-avatar">{profile.name.slice(0, 1).toUpperCase()}</span><div><b>{profile.name}</b><small>{profile.targetRegion} · {profile.browserLabel}{profile.previewOnly ? " · 浏览器预览" : ""}</small></div><span className={`profile-state ${profile.previewOnly ? "" : "ready"}`}>{profile.previewOnly ? "预览" : "已隔离"}</span></div>
+          <div className="profile-paths"><code title={profile.claudeConfigDir}>{profile.claudeConfigDir}</code><code title={profile.browserProfileDir}>{profile.browserProfileDir}</code></div>
+          <div className="profile-actions">
+            <button className="profile-action primary" onClick={() => onOpen(profile, "browser")} disabled={!profile.browserAvailable || Boolean(openingAction)}>打开隔离浏览器</button>
+            <button className="profile-action" onClick={() => onOpen(profile, "claude")} disabled={profile.previewOnly || Boolean(openingAction)}>打开 CLI 入口</button>
+            <button className="profile-action" onClick={() => onOpen(profile, "folder")} disabled={profile.previewOnly || Boolean(openingAction)}>档案目录</button>
+          </div>
+        </article>)}
+      </div>
+    </section>
+    <aside className="card side-card">
+      <span className="mini-label">边界</span><h3>隔离什么，不隔离什么</h3>
+      <div className="preview-list profile-boundary-list"><div><span>CLI 配置与凭证</span><b className="green-text">隔离</b></div><div><span>浏览器 Cookie / 登录</span><b className="green-text">隔离</b></div><div><span>系统时区</span><b>全机共享</b></div><div><span>硬件与浏览器特征</span><b>仍可能相关</b></div><div><span>Clash 活动出口</span><b>同一时刻一个</b></div></div>
+      <div className="permission-box profile-warning"><b>这不是独立设备</b><p>档案隔离能避免两个账号共用本地登录资料，但不会改变硬件指纹、系统环境或公网 IP。若需要指纹级隔离，应另配受审计的指纹浏览器和环境恢复策略。</p></div>
+      <p className="side-copy profile-side-note">首次启动后，请在每个独立窗口各自登录一次。safecc 不读取账号名称、密码、验证码、Cookie 或 Claude 页面内容。</p>
+    </aside>
+  </div>;
+}
+
 function LocalStep({ targetRegion, snapshot, plan, confirmed, setConfirmed, result, error, isApplying, applied, onApply, restoreConfirmed, setRestoreConfirmed, restoreResult, restoreError, isRestoring, onRestore }: { targetRegion: string; snapshot: PlatformSnapshot | null; plan: RegionChangePlan | null; confirmed: boolean; setConfirmed: (value: boolean) => void; result: RegionApplyResult | null; error: string | null; isApplying: boolean; applied: boolean; onApply: () => void; restoreConfirmed: boolean; setRestoreConfirmed: (value: boolean) => void; restoreResult: RegionRestoreResult | null; restoreError: string | null; isRestoring: boolean; onRestore: () => void }) {
   return <div className="grid-layout">
     <section className="card card-large">
-      <div className="card-heading"><div><span className="section-number">C</span><div><h2>按目标地区配置本机</h2><p>执行前展示具体变更；系统权限只在用户确认后请求。</p></div></div><span className={`state-badge ${applied ? "ready" : ""}`}>{applied ? "已执行" : "待执行"}</span></div>
+      <div className="card-heading"><div><span className="section-number">D</span><div><h2>按目标地区配置本机</h2><p>执行前展示具体变更；系统权限只在用户确认后请求。</p></div></div><span className={`state-badge ${applied ? "ready" : ""}`}>{applied ? "已执行" : "待执行"}</span></div>
       <div className="setting-grid"><SettingRow label="时区" value={plan?.timezone ?? "读取中…"} /><SettingRow label="系统语言" value={plan?.language ?? "读取中…"} /><SettingRow label="地区格式" value={plan?.locale ?? targetRegion} /><SettingRow label="系统定位" value="保持由系统授权控制" /></div>
       <div className="permission-box"><b>权限提示</b><p>{plan?.permissionPrompts[0] ?? "执行时可能需要管理员授权"}</p></div>
       <label className="confirm-line"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>我确认按“{targetRegion}”修改系统时区、语言和地区格式。</span></label>
@@ -679,20 +770,20 @@ function LocalStep({ targetRegion, snapshot, plan, confirmed, setConfirmed, resu
 
 function BrowserStep({ plan, confirmed, setConfirmed, result, error, isApplying, applied, expanded, setExpanded, onApply }: { plan: BrowserChangePlan | null; confirmed: boolean; setConfirmed: (value: boolean) => void; result: BrowserApplyResult | null; error: string | null; isApplying: boolean; applied: boolean; expanded: string | null; setExpanded: (value: string | null) => void; onApply: () => void }) {
   const rows = [["语言", plan?.language ?? "跟随系统首选语言", plan?.automatic ? "可自动写入" : "需要确认"], ["时区", "跟随系统时区", "自动检查"], ["定位权限", "默认阻止网站读取位置", plan?.automatic ? "可自动写入" : "打开设置页"], ["安全 DNS / WebRTC", "由 Clash TUN 接管并在验收页复核", "需要验收"]];
-  return <div className="grid-layout"><section className="card card-large"><div className="card-heading"><div><span className="section-number">D</span><div><h2>按地区配置默认浏览器</h2><p>Chrome / Edge 默认配置会先备份 Preferences；Safari、Firefox 或未识别浏览器只做人工引导。</p></div></div><span className={`state-badge ${applied ? "ready" : ""}`}>{applied ? "已执行" : "待检查"}</span></div><div className="browser-banner"><span className="browser-orb">◎</span><div><b>当前默认浏览器</b><strong>{plan?.browserLabel ?? "识别中…"}</strong></div><span className="browser-mode">{plan?.automatic ? "可自动配置" : "手动确认"}</span></div><div className="browser-list">{rows.map(([label, value, action]) => <button className="browser-row" key={label} onClick={() => setExpanded(expanded === label ? null : label)}><span className={`browser-check ${applied && label !== "安全 DNS / WebRTC" ? "passed" : ""}`}>{applied && label !== "安全 DNS / WebRTC" ? "✓" : "○"}</span><span><b>{label}</b><small>{value}</small></span><em>{action}</em><span>＋</span></button>)}</div>{expanded && <div className="inline-guide"><b>{expanded}的处理边界</b><p>{plan?.manualSteps[0] ?? "请在真实浏览器设置页确认，safecc 不注入脚本伪造时区或 WebRTC 结果。"}</p></div>}<div className="permission-box"><b>执行前确认</b><p>{plan?.permissionPrompts[0] ?? "会先备份浏览器偏好，浏览器必须完全退出；safecc 不会强制结束进程。"}</p></div><label className="confirm-line"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>{plan?.automatic ? "我确认已退出默认浏览器，并允许 safecc 备份和修改可自动化的偏好。" : "我已按页面提示检查默认浏览器的语言、定位和安全 DNS 设置。"}</span></label>{result && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>{result.status === "applied" ? "浏览器环境已写入" : "人工检查已记录"}</b><small>{result.status === "applied" ? `${result.changed.join("；")}；本地快照 ${result.backupId ?? "未生成"}；请重启浏览器。` : result.warnings[0]}</small></div></div>}{error && <p className="error-note">{error}</p>}<button className="secondary-button" onClick={onApply} disabled={!confirmed || isApplying}>{isApplying ? "正在备份并写入浏览器偏好…" : plan?.automatic ? applied ? "重新备份并配置浏览器" : "确认、备份并配置浏览器" : "我已按提示检查浏览器"}<span>→</span></button></section><aside className="card side-card"><span className="mini-label">不做的事</span><h3>不伪造网页指纹</h3><p className="side-copy">不注入脚本伪造时区、Canvas 或 WebRTC 结果。安全 DNS、UDP 和最终出口必须以真实检测页面为准。</p><div className="preview-list"><div><span>目标地区</span><b>{plan?.targetRegion ?? "读取中…"}</b></div><div><span>语言偏好</span><b>{plan?.language ?? "—"}</b></div><div><span>配置文件</span><b>{plan?.profileExists ? "已发现" : "未发现"}</b></div></div>{plan?.manualSteps.map((step) => <p className="side-copy" key={step}>· {step}</p>)}</aside></div>;
+  return <div className="grid-layout"><section className="card card-large"><div className="card-heading"><div><span className="section-number">E</span><div><h2>按地区配置默认浏览器</h2><p>Chrome / Edge 默认配置会先备份 Preferences；Safari、Firefox 或未识别浏览器只做人工引导。</p></div></div><span className={`state-badge ${applied ? "ready" : ""}`}>{applied ? "已执行" : "待检查"}</span></div><div className="browser-banner"><span className="browser-orb">◎</span><div><b>当前默认浏览器</b><strong>{plan?.browserLabel ?? "识别中…"}</strong></div><span className="browser-mode">{plan?.automatic ? "可自动配置" : "手动确认"}</span></div><div className="browser-list">{rows.map(([label, value, action]) => <button className="browser-row" key={label} onClick={() => setExpanded(expanded === label ? null : label)}><span className={`browser-check ${applied && label !== "安全 DNS / WebRTC" ? "passed" : ""}`}>{applied && label !== "安全 DNS / WebRTC" ? "✓" : "○"}</span><span><b>{label}</b><small>{value}</small></span><em>{action}</em><span>＋</span></button>)}</div>{expanded && <div className="inline-guide"><b>{expanded}的处理边界</b><p>{plan?.manualSteps[0] ?? "请在真实浏览器设置页确认，safecc 不注入脚本伪造时区或 WebRTC 结果。"}</p></div>}<div className="permission-box"><b>执行前确认</b><p>{plan?.permissionPrompts[0] ?? "会先备份浏览器偏好，浏览器必须完全退出；safecc 不会强制结束进程。"}</p></div><label className="confirm-line"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>{plan?.automatic ? "我确认已退出默认浏览器，并允许 safecc 备份和修改可自动化的偏好。" : "我已按页面提示检查默认浏览器的语言、定位和安全 DNS 设置。"}</span></label>{result && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>{result.status === "applied" ? "浏览器环境已写入" : "人工检查已记录"}</b><small>{result.status === "applied" ? `${result.changed.join("；")}；本地快照 ${result.backupId ?? "未生成"}；请重启浏览器。` : result.warnings[0]}</small></div></div>}{error && <p className="error-note">{error}</p>}<button className="secondary-button" onClick={onApply} disabled={!confirmed || isApplying}>{isApplying ? "正在备份并写入浏览器偏好…" : plan?.automatic ? applied ? "重新备份并配置浏览器" : "确认、备份并配置浏览器" : "我已按提示检查浏览器"}<span>→</span></button></section><aside className="card side-card"><span className="mini-label">不做的事</span><h3>不伪造网页指纹</h3><p className="side-copy">不注入脚本伪造时区、Canvas 或 WebRTC 结果。安全 DNS、UDP 和最终出口必须以真实检测页面为准。</p><div className="preview-list"><div><span>目标地区</span><b>{plan?.targetRegion ?? "读取中…"}</b></div><div><span>语言偏好</span><b>{plan?.language ?? "—"}</b></div><div><span>配置文件</span><b>{plan?.profileExists ? "已发现" : "未发现"}</b></div></div>{plan?.manualSteps.map((step) => <p className="side-copy" key={step}>· {step}</p>)}</aside></div>;
 }
 
 function CacheStep({ plan, approval, setApproval, result, error, isCleaning, confirmed, onClean }: { plan: CachePlan | null; approval: boolean; setApproval: (value: boolean) => void; result: CacheCleanupResult | null; error: string | null; isCleaning: boolean; confirmed: boolean; onClean: () => void }) {
   const availableTargets = plan?.targets.filter((target) => target.exists) ?? [];
-  return <div className="grid-layout"><section className="card card-large"><div className="card-heading"><div><span className="section-number">E</span><div><h2>安全缓存清理</h2><p>只清理可重建内容，避免意外退出账号。</p></div></div><span className={`state-badge ${confirmed ? "ready" : ""}`}>{confirmed ? "已清理" : "待确认"}</span></div><div className="cleanup-columns"><div><span className="column-label">将清理</span><ul className="clean-list"><li>系统 DNS 缓存{plan?.dnsFlushAvailable ? "（可用）" : "（待原生层）"}</li>{availableTargets.length > 0 ? availableTargets.map((target) => <li key={target.label}>{target.label}</li>) : <li>浏览器 / Clash 可重建缓存（按实际存在路径处理）</li>}</ul></div><div><span className="column-label muted-text">默认保留</span><ul className="clean-list keep">{(plan?.preserved ?? ["Cookie 与登录会话", "密码、书签和历史", "扩展与用户文件", "Local Storage / IndexedDB"]).map((item) => <li key={item}>{item}</li>)}</ul></div></div><label className="confirm-line"><input type="checkbox" checked={approval} onChange={(event) => setApproval(event.target.checked)} /><span>我确认执行标准清理，不执行深度清理。</span></label>{result && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>{result.status === "cleaned" ? "标准缓存已清理" : "浏览器预览：未清理文件"}</b><small>{result.status === "cleaned" ? `清理 ${result.cleanedEntries} 个缓存项${result.dnsFlushRequested ? "，已请求刷新 DNS" : ""}` : result.warnings[0]}</small></div></div>}{error && <p className="error-note">{error}</p>}<button className="secondary-button" onClick={onClean} disabled={!approval || isCleaning}>{isCleaning ? "正在清理可重建缓存…" : confirmed ? "重新执行标准清理" : "确认并执行标准清理"}<span>→</span></button></section><aside className="card side-card"><span className="mini-label">深度清理</span><h3>需要另一次确认</h3><p className="side-copy">若要清除登录和站点数据，必须先备份并列出影响范围。safecc 不提供含糊的“一键全清”。</p></aside></div>;
+  return <div className="grid-layout"><section className="card card-large"><div className="card-heading"><div><span className="section-number">F</span><div><h2>安全缓存清理</h2><p>只清理可重建内容，避免意外退出账号。</p></div></div><span className={`state-badge ${confirmed ? "ready" : ""}`}>{confirmed ? "已清理" : "待确认"}</span></div><div className="cleanup-columns"><div><span className="column-label">将清理</span><ul className="clean-list"><li>系统 DNS 缓存{plan?.dnsFlushAvailable ? "（可用）" : "（待原生层）"}</li>{availableTargets.length > 0 ? availableTargets.map((target) => <li key={target.label}>{target.label}</li>) : <li>浏览器 / Clash 可重建缓存（按实际存在路径处理）</li>}</ul></div><div><span className="column-label muted-text">默认保留</span><ul className="clean-list keep">{(plan?.preserved ?? ["Cookie 与登录会话", "密码、书签和历史", "扩展与用户文件", "Local Storage / IndexedDB"]).map((item) => <li key={item}>{item}</li>)}</ul></div></div><label className="confirm-line"><input type="checkbox" checked={approval} onChange={(event) => setApproval(event.target.checked)} /><span>我确认执行标准清理，不执行深度清理。</span></label>{result && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>{result.status === "cleaned" ? "标准缓存已清理" : "浏览器预览：未清理文件"}</b><small>{result.status === "cleaned" ? `清理 ${result.cleanedEntries} 个缓存项${result.dnsFlushRequested ? "，已请求刷新 DNS" : ""}` : result.warnings[0]}</small></div></div>}{error && <p className="error-note">{error}</p>}<button className="secondary-button" onClick={onClean} disabled={!approval || isCleaning}>{isCleaning ? "正在清理可重建缓存…" : confirmed ? "重新执行标准清理" : "确认并执行标准清理"}<span>→</span></button></section><aside className="card side-card"><span className="mini-label">深度清理</span><h3>需要另一次确认</h3><p className="side-copy">若要清除登录和站点数据，必须先备份并列出影响范围。safecc 不提供含糊的“一键全清”。</p></aside></div>;
 }
 
 function VerifyStep({ targetRegion, verified, record, error, isRecording, onOpen, onVerify }: { targetRegion: string; verified: boolean; record: VerificationRecord | null; error: string | null; isRecording: boolean; onOpen: () => void; onVerify: () => void }) {
-  return <div className="grid-layout"><section className="card card-large"><div className="card-heading"><div><span className="section-number">F</span><div><h2>真实出口验收</h2><p>先打开指定检测页，完成真实检查后再由用户确认记录。</p></div></div><span className={`state-badge ${verified ? "ready" : ""}`}>{verified ? "验收已记录" : "待检测"}</span></div><div className="verify-target"><div><span className="mini-label">检测地址</span><strong>ip.net.coffee / claude</strong></div><div className="verify-actions"><button className="secondary-button compact" onClick={onOpen}>打开检测页<span>↗</span></button><button className="link-button" onClick={onVerify} disabled={isRecording}>{isRecording ? "正在保存" : verified ? "重新记录" : "我已确认结果"}</button></div></div><div className="check-grid">{checks.map((check) => <div className="check-card" key={check.label}><span className={`check-icon ${verified ? "passed" : ""}`}>{verified ? "✓" : "○"}</span><div><b>{check.label}</b><small>{verified ? "用户已确认（未自动读取页面）" : check.value}</small></div></div>)}</div>{record && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>脱敏验收记录已保存</b><small>{record.targetRegion} · {record.routeAlias} · {record.clashConfigVersion} · 记录编号 {record.recordId} · 未保存 IP、订阅地址或页面原文</small></div></div>}{error && <p className="error-note">{error}</p>}<p className="tiny-note">safecc 不伪造检测结果；“我已确认结果”表示你已在真实页面核对出口、DNS、WebRTC UDP、时区和语言。</p></section><aside className="card side-card"><span className="mini-label">通过条件</span><h3>先通过网络，再做隐私</h3><p className="side-copy">只有 DNS、WebRTC UDP、时区、语言和 Claude 可用性都被记录后，才会进入最后一步。</p><div className="preview-list"><div><span>目标地区</span><b>{targetRegion}</b></div><div><span>线路别名</span><b>{record?.routeAlias ?? "待记录"}</b></div><div><span>Clash 配置</span><b>{record?.clashConfigVersion ?? "待记录"}</b></div><div><span>本地记录</span><b>{record ? "已保存" : "待保存"}</b></div></div></aside></div>;
+  return <div className="grid-layout"><section className="card card-large"><div className="card-heading"><div><span className="section-number">G</span><div><h2>真实出口验收</h2><p>先打开指定检测页，完成真实检查后再由用户确认记录。</p></div></div><span className={`state-badge ${verified ? "ready" : ""}`}>{verified ? "验收已记录" : "待检测"}</span></div><div className="verify-target"><div><span className="mini-label">检测地址</span><strong>ip.net.coffee / claude</strong></div><div className="verify-actions"><button className="secondary-button compact" onClick={onOpen}>打开检测页<span>↗</span></button><button className="link-button" onClick={onVerify} disabled={isRecording}>{isRecording ? "正在保存" : verified ? "重新记录" : "我已确认结果"}</button></div></div><div className="check-grid">{checks.map((check) => <div className="check-card" key={check.label}><span className={`check-icon ${verified ? "passed" : ""}`}>{verified ? "✓" : "○"}</span><div><b>{check.label}</b><small>{verified ? "用户已确认（未自动读取页面）" : check.value}</small></div></div>)}</div>{record && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>脱敏验收记录已保存</b><small>{record.targetRegion} · {record.routeAlias} · {record.clashConfigVersion} · 记录编号 {record.recordId} · 未保存 IP、订阅地址或页面原文</small></div></div>}{error && <p className="error-note">{error}</p>}<p className="tiny-note">safecc 不伪造检测结果；“我已确认结果”表示你已在真实页面核对出口、DNS、WebRTC UDP、时区和语言。</p></section><aside className="card side-card"><span className="mini-label">通过条件</span><h3>先通过网络，再做隐私</h3><p className="side-copy">只有 DNS、WebRTC UDP、时区、语言和 Claude 可用性都被记录后，才会进入最后一步。</p><div className="preview-list"><div><span>目标地区</span><b>{targetRegion}</b></div><div><span>线路别名</span><b>{record?.routeAlias ?? "待记录"}</b></div><div><span>Clash 配置</span><b>{record?.clashConfigVersion ?? "待记录"}</b></div><div><span>本地记录</span><b>{record ? "已保存" : "待保存"}</b></div></div></aside></div>;
 }
 
 function PrivacyStep({ loggedIn, confirmed, completed, onOpenLogin, onConfirmLogin, onOpenLocation, onOpenClaude, onConfirm }: { loggedIn: boolean; confirmed: boolean; completed: boolean; onOpenLogin: () => void; onConfirmLogin: (value: boolean) => void; onOpenLocation: () => void; onOpenClaude: () => void; onConfirm: (value: boolean) => void }) {
-  return <div className="grid-layout"><section className="card card-large privacy-card"><div className="last-step-ribbon">最后一步 · Claude 隐私</div><div className="card-heading"><div><span className="section-number">G</span><div><h2>登录 Claude 后关闭隐私设置</h2><p>网络环境已经验收；safecc 不接收、不保存你的 Claude 账号或密码。</p></div></div><span className={`state-badge ${confirmed ? "ready" : ""}`}>{completed ? "已完成" : confirmed ? "已确认" : loggedIn ? "已登录，待设置" : "待登录"}</span></div><div className="privacy-row"><span className="privacy-icon">↗</span><div><b>先登录 Claude</b><small>在官方登录页完成登录；safecc 只记录你是否确认已登录，不读取账号信息。</small></div><button className="link-button" onClick={onOpenLogin}>打开登录页</button></div><label className="confirm-line"><input type="checkbox" checked={loggedIn} onChange={(event) => onConfirmLogin(event.target.checked)} /><span>我已在官方 Claude 页面完成登录（不会把账号、密码或验证码交给 safecc）。</span></label><div className={`privacy-row ${!loggedIn ? "privacy-row-locked" : ""}`}><span className="privacy-icon">⌖</span><div><b>关闭定位权限</b><small>登录后打开系统隐私设置，拒绝 Claude 使用位置权限。</small></div><button className="link-button" onClick={onOpenLocation} disabled={!loggedIn}>打开设置</button></div><div className={`privacy-row ${!loggedIn ? "privacy-row-locked" : ""}`}><span className="privacy-icon">◒</span><div><b>关闭“不帮助模型改进”</b><small>登录后打开 Claude 官方设置页，将“帮助改进模型 / 协助改进 AI”关闭。</small></div><button className="link-button" onClick={onOpenClaude} disabled={!loggedIn}>打开 Claude 设置</button></div><label className="confirm-line privacy-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => onConfirm(event.target.checked)} disabled={!loggedIn} /><span>我已登录 Claude，并确认定位权限与“帮助改进模型 / 协助改进 AI”均已关闭。</span></label>{completed && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>safecc 配置流程已完成</b><small>登录、定位和模型改进设置均由你在官方页面确认；safecc 未保存账号或页面内容。</small></div></div>}</section><aside className="card side-card"><span className="mini-label">完成后</span><h3>保存两份状态</h3><div className="evidence-line"><span>网络验收</span><b className="green-text">通过</b></div><div className="evidence-line"><span>Claude 登录</span><b className={loggedIn ? "green-text" : "muted-text"}>{loggedIn ? "已确认" : "待确认"}</b></div><div className="evidence-line"><span>Claude 隐私</span><b className={confirmed ? "green-text" : "muted-text"}>{confirmed ? "已确认" : "待确认"}</b></div><p className="side-copy">safecc 不代填登录信息，也不读取 Claude 页面内容；隐私未完成不会篡改网络验收结果。</p></aside></div>;
+  return <div className="grid-layout"><section className="card card-large privacy-card"><div className="last-step-ribbon">最后一步 · Claude 隐私</div><div className="card-heading"><div><span className="section-number">H</span><div><h2>登录 Claude 后关闭隐私设置</h2><p>网络环境已经验收；safecc 不接收、不保存你的 Claude 账号或密码。</p></div></div><span className={`state-badge ${confirmed ? "ready" : ""}`}>{completed ? "已完成" : confirmed ? "已确认" : loggedIn ? "已登录，待设置" : "待登录"}</span></div><div className="privacy-row"><span className="privacy-icon">↗</span><div><b>先登录 Claude</b><small>在官方登录页完成登录；safecc 只记录你是否确认已登录，不读取账号信息。</small></div><button className="link-button" onClick={onOpenLogin}>打开登录页</button></div><label className="confirm-line"><input type="checkbox" checked={loggedIn} onChange={(event) => onConfirmLogin(event.target.checked)} /><span>我已在官方 Claude 页面完成登录（不会把账号、密码或验证码交给 safecc）。</span></label><div className={`privacy-row ${!loggedIn ? "privacy-row-locked" : ""}`}><span className="privacy-icon">⌖</span><div><b>关闭定位权限</b><small>登录后打开系统隐私设置，拒绝 Claude 使用位置权限。</small></div><button className="link-button" onClick={onOpenLocation} disabled={!loggedIn}>打开设置</button></div><div className={`privacy-row ${!loggedIn ? "privacy-row-locked" : ""}`}><span className="privacy-icon">◒</span><div><b>关闭“不帮助模型改进”</b><small>登录后打开 Claude 官方设置页，将“帮助改进模型 / 协助改进 AI”关闭。</small></div><button className="link-button" onClick={onOpenClaude} disabled={!loggedIn}>打开 Claude 设置</button></div><label className="confirm-line privacy-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => onConfirm(event.target.checked)} disabled={!loggedIn} /><span>我已登录 Claude，并确认定位权限与“帮助改进模型 / 协助改进 AI”均已关闭。</span></label>{completed && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>safecc 配置流程已完成</b><small>登录、定位和模型改进设置均由你在官方页面确认；safecc 未保存账号或页面内容。</small></div></div>}</section><aside className="card side-card"><span className="mini-label">完成后</span><h3>保存两份状态</h3><div className="evidence-line"><span>网络验收</span><b className="green-text">通过</b></div><div className="evidence-line"><span>Claude 登录</span><b className={loggedIn ? "green-text" : "muted-text"}>{loggedIn ? "已确认" : "待确认"}</b></div><div className="evidence-line"><span>Claude 隐私</span><b className={confirmed ? "green-text" : "muted-text"}>{confirmed ? "已确认" : "待确认"}</b></div><p className="side-copy">safecc 不代填登录信息，也不读取 Claude 页面内容；隐私未完成不会篡改网络验收结果。</p></aside></div>;
 }
 
 function SettingRow({ label, value }: { label: string; value: string }) {

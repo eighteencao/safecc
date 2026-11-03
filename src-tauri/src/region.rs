@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 struct RegionTarget {
     label: &'static str,
     timezone: &'static str,
@@ -13,6 +13,268 @@ struct RegionTarget {
     language: &'static str,
     windows_timezone: &'static str,
 }
+
+const REGION_TARGETS: &[RegionTarget] = &[
+    RegionTarget {
+        label: "美国 · 洛杉矶",
+        timezone: "America/Los_Angeles",
+        locale: "en_US",
+        language: "en-US",
+        windows_timezone: "Pacific Standard Time",
+    },
+    RegionTarget {
+        label: "美国 · 旧金山",
+        timezone: "America/Los_Angeles",
+        locale: "en_US",
+        language: "en-US",
+        windows_timezone: "Pacific Standard Time",
+    },
+    RegionTarget {
+        label: "美国 · 西雅图",
+        timezone: "America/Los_Angeles",
+        locale: "en_US",
+        language: "en-US",
+        windows_timezone: "Pacific Standard Time",
+    },
+    RegionTarget {
+        label: "美国 · 纽约",
+        timezone: "America/New_York",
+        locale: "en_US",
+        language: "en-US",
+        windows_timezone: "Eastern Standard Time",
+    },
+    RegionTarget {
+        label: "美国 · 芝加哥",
+        timezone: "America/Chicago",
+        locale: "en_US",
+        language: "en-US",
+        windows_timezone: "Central Standard Time",
+    },
+    RegionTarget {
+        label: "加拿大 · 多伦多",
+        timezone: "America/Toronto",
+        locale: "en_CA",
+        language: "en-CA",
+        windows_timezone: "Eastern Standard Time",
+    },
+    RegionTarget {
+        label: "加拿大 · 温哥华",
+        timezone: "America/Vancouver",
+        locale: "en_CA",
+        language: "en-CA",
+        windows_timezone: "Pacific Standard Time",
+    },
+    RegionTarget {
+        label: "墨西哥 · 墨西哥城",
+        timezone: "America/Mexico_City",
+        locale: "es_MX",
+        language: "es-MX",
+        windows_timezone: "Central Standard Time (Mexico)",
+    },
+    RegionTarget {
+        label: "巴西 · 圣保罗",
+        timezone: "America/Sao_Paulo",
+        locale: "pt_BR",
+        language: "pt-BR",
+        windows_timezone: "E. South America Standard Time",
+    },
+    RegionTarget {
+        label: "阿根廷 · 布宜诺斯艾利斯",
+        timezone: "America/Argentina/Buenos_Aires",
+        locale: "es_AR",
+        language: "es-AR",
+        windows_timezone: "Argentina Standard Time",
+    },
+    RegionTarget {
+        label: "英国 · 伦敦",
+        timezone: "Europe/London",
+        locale: "en_GB",
+        language: "en-GB",
+        windows_timezone: "GMT Standard Time",
+    },
+    RegionTarget {
+        label: "爱尔兰 · 都柏林",
+        timezone: "Europe/Dublin",
+        locale: "en_IE",
+        language: "en-IE",
+        windows_timezone: "GMT Standard Time",
+    },
+    RegionTarget {
+        label: "德国 · 法兰克福",
+        timezone: "Europe/Berlin",
+        locale: "de_DE",
+        language: "de-DE",
+        windows_timezone: "W. Europe Standard Time",
+    },
+    RegionTarget {
+        label: "法国 · 巴黎",
+        timezone: "Europe/Paris",
+        locale: "fr_FR",
+        language: "fr-FR",
+        windows_timezone: "Romance Standard Time",
+    },
+    RegionTarget {
+        label: "荷兰 · 阿姆斯特丹",
+        timezone: "Europe/Amsterdam",
+        locale: "nl_NL",
+        language: "nl-NL",
+        windows_timezone: "W. Europe Standard Time",
+    },
+    RegionTarget {
+        label: "瑞士 · 苏黎世",
+        timezone: "Europe/Zurich",
+        locale: "de_CH",
+        language: "de-CH",
+        windows_timezone: "W. Europe Standard Time",
+    },
+    RegionTarget {
+        label: "西班牙 · 马德里",
+        timezone: "Europe/Madrid",
+        locale: "es_ES",
+        language: "es-ES",
+        windows_timezone: "Romance Standard Time",
+    },
+    RegionTarget {
+        label: "意大利 · 米兰",
+        timezone: "Europe/Rome",
+        locale: "it_IT",
+        language: "it-IT",
+        windows_timezone: "W. Europe Standard Time",
+    },
+    RegionTarget {
+        label: "葡萄牙 · 里斯本",
+        timezone: "Europe/Lisbon",
+        locale: "pt_PT",
+        language: "pt-PT",
+        windows_timezone: "GMT Standard Time",
+    },
+    RegionTarget {
+        label: "波兰 · 华沙",
+        timezone: "Europe/Warsaw",
+        locale: "pl_PL",
+        language: "pl-PL",
+        windows_timezone: "Central European Standard Time",
+    },
+    RegionTarget {
+        label: "瑞典 · 斯德哥尔摩",
+        timezone: "Europe/Stockholm",
+        locale: "sv_SE",
+        language: "sv-SE",
+        windows_timezone: "W. Europe Standard Time",
+    },
+    RegionTarget {
+        label: "日本 · 东京",
+        timezone: "Asia/Tokyo",
+        locale: "ja_JP",
+        language: "ja-JP",
+        windows_timezone: "Tokyo Standard Time",
+    },
+    RegionTarget {
+        label: "韩国 · 首尔",
+        timezone: "Asia/Seoul",
+        locale: "ko_KR",
+        language: "ko-KR",
+        windows_timezone: "Korea Standard Time",
+    },
+    RegionTarget {
+        label: "新加坡",
+        timezone: "Asia/Singapore",
+        locale: "en_SG",
+        language: "en-SG",
+        windows_timezone: "Singapore Standard Time",
+    },
+    RegionTarget {
+        label: "台湾 · 台北",
+        timezone: "Asia/Taipei",
+        locale: "zh_TW",
+        language: "zh-TW",
+        windows_timezone: "Taipei Standard Time",
+    },
+    RegionTarget {
+        label: "澳大利亚 · 悉尼",
+        timezone: "Australia/Sydney",
+        locale: "en_AU",
+        language: "en-AU",
+        windows_timezone: "AUS Eastern Standard Time",
+    },
+    RegionTarget {
+        label: "澳大利亚 · 墨尔本",
+        timezone: "Australia/Melbourne",
+        locale: "en_AU",
+        language: "en-AU",
+        windows_timezone: "AUS Eastern Standard Time",
+    },
+    RegionTarget {
+        label: "新西兰 · 奥克兰",
+        timezone: "Pacific/Auckland",
+        locale: "en_NZ",
+        language: "en-NZ",
+        windows_timezone: "New Zealand Standard Time",
+    },
+    RegionTarget {
+        label: "印度 · 孟买",
+        timezone: "Asia/Kolkata",
+        locale: "en_IN",
+        language: "en-IN",
+        windows_timezone: "India Standard Time",
+    },
+    RegionTarget {
+        label: "马来西亚 · 吉隆坡",
+        timezone: "Asia/Kuala_Lumpur",
+        locale: "ms_MY",
+        language: "ms-MY",
+        windows_timezone: "Singapore Standard Time",
+    },
+    RegionTarget {
+        label: "泰国 · 曼谷",
+        timezone: "Asia/Bangkok",
+        locale: "th_TH",
+        language: "th-TH",
+        windows_timezone: "SE Asia Standard Time",
+    },
+    RegionTarget {
+        label: "越南 · 胡志明市",
+        timezone: "Asia/Ho_Chi_Minh",
+        locale: "vi_VN",
+        language: "vi-VN",
+        windows_timezone: "SE Asia Standard Time",
+    },
+    RegionTarget {
+        label: "菲律宾 · 马尼拉",
+        timezone: "Asia/Manila",
+        locale: "en_PH",
+        language: "en-PH",
+        windows_timezone: "Singapore Standard Time",
+    },
+    RegionTarget {
+        label: "印度尼西亚 · 雅加达",
+        timezone: "Asia/Jakarta",
+        locale: "id_ID",
+        language: "id-ID",
+        windows_timezone: "SE Asia Standard Time",
+    },
+    RegionTarget {
+        label: "以色列 · 特拉维夫",
+        timezone: "Asia/Jerusalem",
+        locale: "he_IL",
+        language: "he-IL",
+        windows_timezone: "Israel Standard Time",
+    },
+    RegionTarget {
+        label: "阿联酋 · 迪拜",
+        timezone: "Asia/Dubai",
+        locale: "ar_AE",
+        language: "ar-AE",
+        windows_timezone: "Arabian Standard Time",
+    },
+    RegionTarget {
+        label: "南非 · 约翰内斯堡",
+        timezone: "Africa/Johannesburg",
+        locale: "en_ZA",
+        language: "en-ZA",
+        windows_timezone: "South Africa Standard Time",
+    },
+];
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -145,43 +407,21 @@ pub fn restore(snapshot_id: String, confirmed: bool) -> Result<RegionRestoreResu
 }
 
 fn target_for(target_region: &str) -> RegionTarget {
-    match target_region {
-        "美国 · 纽约" => RegionTarget {
-            label: "美国 · 纽约",
-            timezone: "America/New_York",
-            locale: "en_US",
-            language: "en-US",
-            windows_timezone: "Eastern Standard Time",
-        },
-        "日本 · 东京" => RegionTarget {
-            label: "日本 · 东京",
-            timezone: "Asia/Tokyo",
-            locale: "ja_JP",
-            language: "ja-JP",
-            windows_timezone: "Tokyo Standard Time",
-        },
-        "新加坡" => RegionTarget {
-            label: "新加坡",
-            timezone: "Asia/Singapore",
-            locale: "en_SG",
-            language: "en-SG",
-            windows_timezone: "Singapore Standard Time",
-        },
-        "英国 · 伦敦" => RegionTarget {
-            label: "英国 · 伦敦",
-            timezone: "Europe/London",
-            locale: "en_GB",
-            language: "en-GB",
-            windows_timezone: "GMT Standard Time",
-        },
-        _ => RegionTarget {
-            label: "美国 · 洛杉矶",
-            timezone: "America/Los_Angeles",
-            locale: "en_US",
-            language: "en-US",
-            windows_timezone: "Pacific Standard Time",
-        },
-    }
+    REGION_TARGETS
+        .iter()
+        .find(|target| target.label == target_region)
+        .copied()
+        .unwrap_or(REGION_TARGETS[0])
+}
+
+pub(crate) fn is_supported_region(target_region: &str) -> bool {
+    REGION_TARGETS
+        .iter()
+        .any(|target| target.label == target_region)
+}
+
+pub(crate) fn target_language(target_region: &str) -> &'static str {
+    target_for(target_region).language
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -517,6 +757,9 @@ mod tests {
         assert_eq!(plan.timezone, "Asia/Tokyo");
         assert_eq!(plan.locale, "ja_JP");
         assert!(!plan.permission_prompts.is_empty());
+        let taipei = change_plan("台湾 · 台北".to_string());
+        assert_eq!(taipei.timezone, "Asia/Taipei");
+        assert_eq!(taipei.language, "zh-TW");
     }
 
     #[test]
