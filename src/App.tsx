@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { applyBrowserEnvironment, applyClashExtension, applyRegionChange, checkVpsReadOnly, clearSafeCache, createClashBackup, createEnvironmentProfile, deployVps, getBrowserChangePlan, getCachePlan, getClashChangePlan, getPlatformSnapshot, getRegionChangePlan, getRuntimeInfo, importClashSubscription, importLocalClashSubscription, listClashBackups, listEnvironmentProfiles, openEnvironmentProfile, openSafeTarget, preflightSource, recordVerification, restoreClashBackup, restoreRegionSnapshot, type BrowserApplyResult, type BrowserChangePlan, type CacheCleanupResult, type CachePlan, type ClashApplyResult, type ClashBackupResult, type ClashBackupSummary, type ClashChangePlan, type ClashImportResult, type ClashRestoreResult, type EnvironmentProfile, type OpenTarget, type PlatformSnapshot, type RegionApplyResult, type RegionChangePlan, type RegionRestoreResult, type SourcePreflightResult, type VerificationRecord, type VpsCheckResult, type VpsDeployResult } from "./native";
+import { applyBrowserEnvironment, applyClashExtension, applyRegionChange, checkVpsReadOnly, clearSafeCache, createClashBackup, createEnvironmentProfile, deployVps, getBrowserChangePlan, getCachePlan, getClashChangePlan, getFingerprintEngine, getPlatformSnapshot, getRegionChangePlan, getRuntimeInfo, importClashSubscription, importLocalClashSubscription, listClashBackups, listEnvironmentProfiles, openBrowserSettingPage, openEnvironmentProfile, openFingerprintBrowser, openSafeTarget, preflightSource, recognizeBrowserEnvironment, recordVerification, restoreClashBackup, restoreRegionSnapshot, type BrowserApplyResult, type BrowserChangePlan, type BrowserRecognitionResult, type CacheCleanupResult, type CachePlan, type ClashApplyResult, type ClashBackupResult, type ClashBackupSummary, type ClashChangePlan, type ClashImportResult, type ClashRestoreResult, type EnvironmentProfile, type FingerprintEngine, type OpenTarget, type PlatformSnapshot, type RegionApplyResult, type RegionChangePlan, type RegionRestoreResult, type SourcePreflightResult, type VerificationRecord, type VpsCheckResult, type VpsDeployResult } from "./native";
 import { DEFAULT_REGION, REGION_GROUPS } from "./regions";
 
 type SourceKind = "vps" | "static" | "airport";
@@ -19,7 +19,7 @@ const steps: Step[] = [
   { id: "clash", index: "02", eyebrow: "Clash Verge Rev", title: "让配置真正生效", description: "在已有订阅配置上写入托管扩展，启用规则模式、TUN、DNS 接管和 UDP 路由。" },
   { id: "profiles", index: "03", eyebrow: "账号档案", title: "隔离凭据与浏览器资料", description: "为不同账号建立独立的 Claude CLI 配置目录和 Chromium Profile；不复制已有登录内容。" },
   { id: "local", index: "04", eyebrow: "本机环境", title: "对齐系统环境", description: "设置目标地区的时区、语言与地区格式，保留可回滚的原值。" },
-  { id: "browser", index: "05", eyebrow: "默认浏览器", title: "检查浏览器边界", description: "处理语言、定位权限和时区继承；不能稳定自动化的项目会明确引导。" },
+  { id: "browser", index: "05", eyebrow: "默认浏览器", title: "打开设置并识别结果", description: "逐项打开对应设置页，手动修改后由 safecc 只读识别；WebRTC 仍以真实检测页为准。" },
   { id: "cache", index: "06", eyebrow: "安全清理", title: "只清理可重建缓存", description: "清除网络与应用缓存，不触碰登录、Cookie、密码、书签和历史。" },
   { id: "verify", index: "07", eyebrow: "真实验收", title: "确认出口没有绕行", description: "打开指定检测页，核对 Claude、DNS、WebRTC UDP、时区和语言。" },
   { id: "privacy", index: "08", eyebrow: "最后一步", title: "登录并关闭 Claude 隐私开关", description: "网络验收通过后，先登录 Claude，再处理定位权限与“协助改进 AI”。" },
@@ -113,6 +113,12 @@ function App() {
   const [browserError, setBrowserError] = useState<string | null>(null);
   const [isApplyingBrowser, setIsApplyingBrowser] = useState(false);
   const [browserApplied, setBrowserApplied] = useState(false);
+  const [browserRecognition, setBrowserRecognition] = useState<BrowserRecognitionResult | null>(null);
+  const [browserRecognitionError, setBrowserRecognitionError] = useState<string | null>(null);
+  const [isRecognizingBrowser, setIsRecognizingBrowser] = useState(false);
+  const [fingerprintEngine, setFingerprintEngine] = useState<FingerprintEngine | null>(null);
+  const [browserManualConfirmed, setBrowserManualConfirmed] = useState(false);
+  const [browserManualError, setBrowserManualError] = useState<string | null>(null);
   const [quickConfigConfirmed, setQuickConfigConfirmed] = useState(false);
   const [isQuickConfiguring, setIsQuickConfiguring] = useState(false);
   const [quickConfigStage, setQuickConfigStage] = useState<string | null>(null);
@@ -140,6 +146,7 @@ function App() {
     getPlatformSnapshot().then(setPlatformSnapshot).catch(() => setPlatformSnapshot(null));
     getCachePlan().then(setCachePlan).catch(() => setCachePlan(null));
     listEnvironmentProfiles().then(setEnvironmentProfiles).catch(() => setEnvironmentProfiles([]));
+    getFingerprintEngine().then(setFingerprintEngine).catch(() => setFingerprintEngine(null));
     refreshBackups();
   }, []);
 
@@ -202,6 +209,11 @@ function App() {
     setBrowserConfirmed(false);
     setBrowserResult(null);
     setBrowserError(null);
+    setBrowserRecognition(null);
+    setBrowserRecognitionError(null);
+    setBrowserConfirmed(false);
+    setBrowserManualConfirmed(false);
+    setBrowserManualError(null);
     setCacheConfirmed(false);
     setCacheApproval(false);
     setCacheResult(null);
@@ -363,28 +375,76 @@ function App() {
 
   const handleApplyBrowser = async () => {
     if (!browserConfirmed || isApplyingBrowser) return;
-    if (!browserPlan?.automatic) {
-      setBrowserResult({
-        status: "preview-only",
-        browser: browserPlan?.browser ?? "unknown",
-        changed: [],
-        backupId: null,
-        requiresRestart: false,
-        warnings: ["当前浏览器没有安全的自动写入入口，已记录用户完成人工检查"],
-      });
-      setBrowserApplied(true);
+    if (!browserRecognition?.allRequiredPassed && !browserRecognition?.manualOnly) return;
+    if (browserRecognition?.manualOnly && !browserManualConfirmed) {
+      setBrowserManualError("Safari / Firefox 没有安全自动识别入口；请逐项确认已手动完成，再用检测页复核。");
       return;
     }
     setBrowserError(null);
     setIsApplyingBrowser(true);
     try {
-      const result = await applyBrowserEnvironment(targetRegion, platformSnapshot?.defaultBrowser ?? null, true);
-      setBrowserResult(result);
+      if (browserPlan?.automatic) {
+        const result = await applyBrowserEnvironment(targetRegion, platformSnapshot?.defaultBrowser ?? null, true);
+        setBrowserResult(result);
+      } else {
+        setBrowserResult({
+          status: "preview-only",
+          browser: browserPlan?.browser ?? "unknown",
+          changed: [],
+          backupId: null,
+          requiresRestart: false,
+          warnings: ["已按逐项设置页修改并由 safecc 只读识别。"],
+        });
+      }
       setBrowserApplied(true);
     } catch (error) {
       setBrowserError(error instanceof Error ? error.message : "浏览器环境配置失败，请检查浏览器是否已完全退出。");
     } finally {
       setIsApplyingBrowser(false);
+    }
+  };
+
+  const handleRecognizeBrowser = async () => {
+    if (isRecognizingBrowser) return;
+    setBrowserRecognitionError(null);
+    setIsRecognizingBrowser(true);
+    try {
+      const result = await recognizeBrowserEnvironment(targetRegion, platformSnapshot?.defaultBrowser ?? null);
+      setBrowserRecognition(result);
+      if (!result.allRequiredPassed) {
+        setBrowserApplied(false);
+        setBrowserResult(null);
+      }
+      if (!result.manualOnly) setBrowserManualConfirmed(false);
+    } catch (error) {
+      setBrowserRecognition(null);
+      setBrowserApplied(false);
+      setBrowserRecognitionError(error instanceof Error ? error.message : "无法只读识别浏览器设置。");
+    } finally {
+      setIsRecognizingBrowser(false);
+    }
+  };
+
+  const handleOpenBrowserSetting = async (target: "languages" | "location" | "dns" | "verify") => {
+    setBrowserRecognitionError(null);
+    try {
+      await openBrowserSettingPage(target, platformSnapshot?.defaultBrowser ?? null);
+    } catch (error) {
+      setBrowserRecognitionError(error instanceof Error ? error.message : "无法打开对应设置页。");
+    }
+  };
+
+  const handleOpenFingerprintBrowser = async (profile: EnvironmentProfile) => {
+    setProfileError(null);
+    setProfileNotice(null);
+    setOpeningProfileAction(`${profile.id}:fingerprint`);
+    try {
+      const notice = await openFingerprintBrowser(profile.id, true);
+      setProfileNotice(notice);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "无法启动指纹浏览器。");
+    } finally {
+      setOpeningProfileAction(null);
     }
   };
 
@@ -450,9 +510,18 @@ function App() {
         await refreshBackups();
         return;
       }
-      const browser = await applyBrowserEnvironment(targetRegion, platformSnapshot?.defaultBrowser ?? null, true);
-      setBrowserResult(browser);
-      setBrowserApplied(true);
+      setQuickConfigStage("默认浏览器需要打开对应设置页，手动修改后由 safecc 识别");
+      setBrowserResult({
+        status: "preview-only",
+        browser: browserPlan?.browser ?? "unknown",
+        changed: [],
+        backupId: null,
+        requiresRestart: true,
+        warnings: ["一键配置不会代替浏览器逐项设置；请在设置页修改后点击重新识别。"],
+      });
+      setActiveStep("browser");
+      await refreshBackups();
+      return;
 
       setQuickConfigStage("正在清理标准缓存并刷新 DNS");
       const cache = await clearSafeCache(true);
@@ -622,9 +691,9 @@ function App() {
 
           {activeStep === "source" && <SourceStep source={source} setSource={setSource} selectedSource={selectedSource} subscription={subscription} setSubscription={setSubscription} vpsKeyPath={vpsKeyPath} setVpsKeyPath={setVpsKeyPath} vpsPpkPath={vpsPpkPath} setVpsPpkPath={setVpsPpkPath} vpsPubPath={vpsPubPath} setVpsPubPath={setVpsPubPath} vpsProxyHost={vpsProxyHost} setVpsProxyHost={setVpsProxyHost} vpsProxyPort={vpsProxyPort} setVpsProxyPort={setVpsProxyPort} vpsProxyUser={vpsProxyUser} setVpsProxyUser={setVpsProxyUser} vpsProxyPassword={vpsProxyPassword} setVpsProxyPassword={setVpsProxyPassword} vpsExpectedIp={vpsExpectedIp} setVpsExpectedIp={setVpsExpectedIp} fingerprintConfirmed={vpsFingerprintConfirmed} setFingerprintConfirmed={setVpsFingerprintConfirmed} vpsCheckConsent={vpsCheckConsent} setVpsCheckConsent={setVpsCheckConsent} vpsCheckResult={vpsCheckResult} vpsCheckError={vpsCheckError} isCheckingVps={isCheckingVps} onVpsCheck={handleVpsCheck} vpsDeployConsent={vpsDeployConsent} setVpsDeployConsent={setVpsDeployConsent} vpsDeployResult={vpsDeployResult} vpsDeployError={vpsDeployError} isDeployingVps={isDeployingVps} onVpsDeploy={handleVpsDeploy} targetRegion={targetRegion} setTargetRegion={setTargetRegion} consent={sourceConsent} setConsent={setSourceConsent} preflight={sourcePreflight} error={sourcePreflightError} isPreflighting={isPreflightingSource} onPreflight={handleSourcePreflight} quickConfigReady={quickConfigReady} quickConfigConfirmed={quickConfigConfirmed} setQuickConfigConfirmed={setQuickConfigConfirmed} isQuickConfiguring={isQuickConfiguring} quickConfigStage={quickConfigStage} quickConfigError={quickConfigError} onQuickConfigure={handleQuickConfigure} onOpenProvider={(target) => handleOpenTarget(target)} />}
           {activeStep === "clash" && <ClashStep isConfigured={isConfigured} plan={clashPlan} backupConfirmed={backupConfirmed} setBackupConfirmed={setBackupConfirmed} backupResult={backupResult} backupError={backupError} clashImportResult={clashImportResult} clashImportError={clashImportError} clashApplyResult={clashApplyResult} clashApplyError={clashApplyError} isBackingUp={isBackingUp} backups={backups} selectedBackupId={selectedBackupId} setSelectedBackupId={setSelectedBackupId} restoreConfirmed={restoreConfirmed} setRestoreConfirmed={setRestoreConfirmed} restoreResult={restoreResult} restoreError={restoreError} isRestoring={isRestoring} onConfigure={handleClashConfigure} onRestore={handleRestore} onOpenClash={() => handleOpenTarget("clash")} />}
-          {activeStep === "profiles" && <ProfilesStep targetRegion={targetRegion} profiles={environmentProfiles} name={profileName} setName={setProfileName} confirmed={profileConfirmed} setConfirmed={setProfileConfirmed} error={profileError} notice={profileNotice} isCreating={isCreatingProfile} openingAction={openingProfileAction} onCreate={handleCreateProfile} onOpen={handleOpenProfile} />}
+          {activeStep === "profiles" && <ProfilesStep targetRegion={targetRegion} profiles={environmentProfiles} fingerprintEngine={fingerprintEngine} name={profileName} setName={setProfileName} confirmed={profileConfirmed} setConfirmed={setProfileConfirmed} error={profileError} notice={profileNotice} isCreating={isCreatingProfile} openingAction={openingProfileAction} onCreate={handleCreateProfile} onOpen={handleOpenProfile} onOpenFingerprint={handleOpenFingerprintBrowser} />}
           {activeStep === "local" && <LocalStep targetRegion={targetRegion} snapshot={platformSnapshot} plan={regionPlan} confirmed={regionConfirmed} setConfirmed={setRegionConfirmed} result={regionResult} error={regionError} isApplying={isApplyingRegion} applied={localApplied} onApply={handleApplyRegion} restoreConfirmed={regionRestoreConfirmed} setRestoreConfirmed={setRegionRestoreConfirmed} restoreResult={regionRestoreResult} restoreError={regionRestoreError} isRestoring={isRestoringRegion} onRestore={handleRestoreRegion} />}
-          {activeStep === "browser" && <BrowserStep plan={browserPlan} confirmed={browserConfirmed} setConfirmed={setBrowserConfirmed} result={browserResult} error={browserError} isApplying={isApplyingBrowser} applied={browserApplied} expanded={expanded} setExpanded={setExpanded} onApply={handleApplyBrowser} />}
+          {activeStep === "browser" && <BrowserStep plan={browserPlan} confirmed={browserConfirmed} setConfirmed={setBrowserConfirmed} manualConfirmed={browserManualConfirmed} setManualConfirmed={setBrowserManualConfirmed} manualError={browserManualError} result={browserResult} error={browserError} isApplying={isApplyingBrowser} applied={browserApplied} recognition={browserRecognition} recognitionError={browserRecognitionError} isRecognizing={isRecognizingBrowser} onRecognize={handleRecognizeBrowser} onOpenSetting={handleOpenBrowserSetting} expanded={expanded} setExpanded={setExpanded} onApply={handleApplyBrowser} />}
           {activeStep === "cache" && <CacheStep plan={cachePlan} approval={cacheApproval} setApproval={setCacheApproval} result={cacheResult} error={cacheError} isCleaning={isCleaningCache} confirmed={cacheConfirmed} onClean={handleCacheCleanup} />}
           {externalOpenError && <p className="error-note global-error">{externalOpenError}</p>}
           {activeStep === "verify" && <VerifyStep targetRegion={targetRegion} verified={isVerified} record={verificationRecord} error={verificationError} isRecording={isRecordingVerification} onOpen={() => handleOpenTarget("verification")} onVerify={handleVerify} />}
@@ -712,7 +781,7 @@ function ClashStep({ isConfigured, plan, backupConfirmed, setBackupConfirmed, ba
   </div>;
 }
 
-function ProfilesStep({ targetRegion, profiles, name, setName, confirmed, setConfirmed, error, notice, isCreating, openingAction, onCreate, onOpen }: { targetRegion: string; profiles: EnvironmentProfile[]; name: string; setName: (value: string) => void; confirmed: boolean; setConfirmed: (value: boolean) => void; error: string | null; notice: string | null; isCreating: boolean; openingAction: string | null; onCreate: () => void; onOpen: (profile: EnvironmentProfile, action: "browser" | "claude" | "folder") => void }) {
+function ProfilesStep({ targetRegion, profiles, fingerprintEngine, name, setName, confirmed, setConfirmed, error, notice, isCreating, openingAction, onCreate, onOpen, onOpenFingerprint }: { targetRegion: string; profiles: EnvironmentProfile[]; fingerprintEngine: FingerprintEngine | null; name: string; setName: (value: string) => void; confirmed: boolean; setConfirmed: (value: boolean) => void; error: string | null; notice: string | null; isCreating: boolean; openingAction: string | null; onCreate: () => void; onOpen: (profile: EnvironmentProfile, action: "browser" | "claude" | "folder") => void; onOpenFingerprint: (profile: EnvironmentProfile) => void }) {
   const browserName = profiles.find((profile) => profile.browserAvailable)?.browserLabel ?? "Chrome / Edge";
   return <div className="grid-layout">
     <section className="card card-large">
@@ -737,6 +806,7 @@ function ProfilesStep({ targetRegion, profiles, name, setName, confirmed, setCon
           <div className="profile-paths"><code title={profile.claudeConfigDir}>{profile.claudeConfigDir}</code><code title={profile.browserProfileDir}>{profile.browserProfileDir}</code></div>
           <div className="profile-actions">
             <button className="profile-action primary" onClick={() => onOpen(profile, "browser")} disabled={!profile.browserAvailable || Boolean(openingAction)}>打开隔离浏览器</button>
+            <button className="profile-action primary" onClick={() => onOpenFingerprint(profile)} disabled={profile.previewOnly || !fingerprintEngine?.available || Boolean(openingAction)}>打开指纹浏览器</button>
             <button className="profile-action" onClick={() => onOpen(profile, "claude")} disabled={profile.previewOnly || Boolean(openingAction)}>打开 CLI 入口</button>
             <button className="profile-action" onClick={() => onOpen(profile, "folder")} disabled={profile.previewOnly || Boolean(openingAction)}>档案目录</button>
           </div>
@@ -747,6 +817,7 @@ function ProfilesStep({ targetRegion, profiles, name, setName, confirmed, setCon
       <span className="mini-label">边界</span><h3>隔离什么，不隔离什么</h3>
       <div className="preview-list profile-boundary-list"><div><span>CLI 配置与凭证</span><b className="green-text">隔离</b></div><div><span>浏览器 Cookie / 登录</span><b className="green-text">隔离</b></div><div><span>系统时区</span><b>全机共享</b></div><div><span>硬件与浏览器特征</span><b>仍可能相关</b></div><div><span>Clash 活动出口</span><b>同一时刻一个</b></div></div>
       <div className="permission-box profile-warning"><b>这不是独立设备</b><p>档案隔离能避免两个账号共用本地登录资料，但不会改变硬件指纹、系统环境或公网 IP。若需要指纹级隔离，应另配受审计的指纹浏览器和环境恢复策略。</p></div>
+      <div className="fingerprint-engine-box"><span className="mini-label">指纹浏览器引擎</span><strong>{fingerprintEngine?.label ?? "正在检测…"}</strong><small>{fingerprintEngine?.available ? `${fingerprintEngine.version} · 每个档案使用独立资料与稳定种子` : "未安装时，档案仍使用普通 Chromium 独立 Profile（只隔离登录资料）"}</small>{fingerprintEngine?.notes.slice(0, 2).map((note) => <p key={note}>· {note}</p>)}</div>
       <p className="side-copy profile-side-note">首次启动后，请在每个独立窗口各自登录一次。safecc 不读取账号名称、密码、验证码、Cookie 或 Claude 页面内容。</p>
     </aside>
   </div>;
@@ -768,9 +839,17 @@ function LocalStep({ targetRegion, snapshot, plan, confirmed, setConfirmed, resu
   </div>;
 }
 
-function BrowserStep({ plan, confirmed, setConfirmed, result, error, isApplying, applied, expanded, setExpanded, onApply }: { plan: BrowserChangePlan | null; confirmed: boolean; setConfirmed: (value: boolean) => void; result: BrowserApplyResult | null; error: string | null; isApplying: boolean; applied: boolean; expanded: string | null; setExpanded: (value: string | null) => void; onApply: () => void }) {
-  const rows = [["语言", plan?.language ?? "跟随系统首选语言", plan?.automatic ? "可自动写入" : "需要确认"], ["时区", "跟随系统时区", "自动检查"], ["定位权限", "默认阻止网站读取位置", plan?.automatic ? "可自动写入" : "打开设置页"], ["安全 DNS / WebRTC", "由 Clash TUN 接管并在验收页复核", "需要验收"]];
-  return <div className="grid-layout"><section className="card card-large"><div className="card-heading"><div><span className="section-number">E</span><div><h2>按地区配置默认浏览器</h2><p>Chrome / Edge 默认配置会先备份 Preferences；Safari、Firefox 或未识别浏览器只做人工引导。</p></div></div><span className={`state-badge ${applied ? "ready" : ""}`}>{applied ? "已执行" : "待检查"}</span></div><div className="browser-banner"><span className="browser-orb">◎</span><div><b>当前默认浏览器</b><strong>{plan?.browserLabel ?? "识别中…"}</strong></div><span className="browser-mode">{plan?.automatic ? "可自动配置" : "手动确认"}</span></div><div className="browser-list">{rows.map(([label, value, action]) => <button className="browser-row" key={label} onClick={() => setExpanded(expanded === label ? null : label)}><span className={`browser-check ${applied && label !== "安全 DNS / WebRTC" ? "passed" : ""}`}>{applied && label !== "安全 DNS / WebRTC" ? "✓" : "○"}</span><span><b>{label}</b><small>{value}</small></span><em>{action}</em><span>＋</span></button>)}</div>{expanded && <div className="inline-guide"><b>{expanded}的处理边界</b><p>{plan?.manualSteps[0] ?? "请在真实浏览器设置页确认，safecc 不注入脚本伪造时区或 WebRTC 结果。"}</p></div>}<div className="permission-box"><b>执行前确认</b><p>{plan?.permissionPrompts[0] ?? "会先备份浏览器偏好，浏览器必须完全退出；safecc 不会强制结束进程。"}</p></div><label className="confirm-line"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>{plan?.automatic ? "我确认已退出默认浏览器，并允许 safecc 备份和修改可自动化的偏好。" : "我已按页面提示检查默认浏览器的语言、定位和安全 DNS 设置。"}</span></label>{result && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>{result.status === "applied" ? "浏览器环境已写入" : "人工检查已记录"}</b><small>{result.status === "applied" ? `${result.changed.join("；")}；本地快照 ${result.backupId ?? "未生成"}；请重启浏览器。` : result.warnings[0]}</small></div></div>}{error && <p className="error-note">{error}</p>}<button className="secondary-button" onClick={onApply} disabled={!confirmed || isApplying}>{isApplying ? "正在备份并写入浏览器偏好…" : plan?.automatic ? applied ? "重新备份并配置浏览器" : "确认、备份并配置浏览器" : "我已按提示检查浏览器"}<span>→</span></button></section><aside className="card side-card"><span className="mini-label">不做的事</span><h3>不伪造网页指纹</h3><p className="side-copy">不注入脚本伪造时区、Canvas 或 WebRTC 结果。安全 DNS、UDP 和最终出口必须以真实检测页面为准。</p><div className="preview-list"><div><span>目标地区</span><b>{plan?.targetRegion ?? "读取中…"}</b></div><div><span>语言偏好</span><b>{plan?.language ?? "—"}</b></div><div><span>配置文件</span><b>{plan?.profileExists ? "已发现" : "未发现"}</b></div></div>{plan?.manualSteps.map((step) => <p className="side-copy" key={step}>· {step}</p>)}</aside></div>;
+function BrowserStep({ plan, confirmed, setConfirmed, manualConfirmed, setManualConfirmed, manualError, result, error, isApplying, applied, recognition, recognitionError, isRecognizing, onRecognize, onOpenSetting, expanded, setExpanded, onApply }: { plan: BrowserChangePlan | null; confirmed: boolean; setConfirmed: (value: boolean) => void; manualConfirmed: boolean; setManualConfirmed: (value: boolean) => void; manualError: string | null; result: BrowserApplyResult | null; error: string | null; isApplying: boolean; applied: boolean; recognition: BrowserRecognitionResult | null; recognitionError: string | null; isRecognizing: boolean; onRecognize: () => void; onOpenSetting: (target: "languages" | "location" | "dns" | "verify") => void; expanded: string | null; setExpanded: (value: string | null) => void; onApply: () => void }) {
+  const checks = recognition?.checks ?? [
+    { id: "language", label: "语言", status: "attention" as const, expected: plan?.language ?? "—", observed: "尚未识别", detail: "打开语言设置页，把目标语言移到首位并保存。", settingUrl: "chrome://settings/languages" },
+    { id: "location", label: "定位权限", status: "attention" as const, expected: "阻止网站读取位置", observed: "尚未识别", detail: "打开网站设置 → 位置信息，选择阻止。", settingUrl: "chrome://settings/content/location" },
+    { id: "dns", label: "安全 DNS", status: "attention" as const, expected: "关闭，由 Clash TUN 接管", observed: "尚未识别", detail: "打开安全设置，关闭浏览器安全 DNS。", settingUrl: "chrome://settings/security" },
+    { id: "webrtc", label: "WebRTC UDP", status: "manual" as const, expected: "与代理出口一致", observed: "需用真实检测页确认", detail: "打开真实检测页复核，不由 safecc 伪造结果。", settingUrl: "https://ip.net.coffee/claude/" },
+  ];
+  const settingTarget = (id: string): "languages" | "location" | "dns" | "verify" => id === "language" ? "languages" : id === "location" ? "location" : id === "dns" ? "dns" : "verify";
+  const statusLabel = (status: string) => status === "passed" ? "已符合" : status === "manual" ? "人工复核" : "待修改";
+  const canComplete = Boolean(confirmed && recognition && (recognition.allRequiredPassed || (recognition.manualOnly && manualConfirmed)));
+  return <div className="grid-layout"><section className="card card-large"><div className="card-heading"><div><span className="section-number">E</span><div><h2>打开设置页并识别浏览器</h2><p>每项设置由你在真实浏览器里修改；safecc 随后只读识别，WebRTC 仍以检测页为准。</p></div></div><span className={`state-badge ${applied ? "ready" : ""}`}>{applied ? "已完成" : recognition?.manualOnly ? "人工确认" : "待识别"}</span></div><div className="browser-banner"><span className="browser-orb">◎</span><div><b>当前默认浏览器</b><strong>{plan?.browserLabel ?? "识别中…"}</strong></div><span className="browser-mode">{recognition?.manualOnly ? "手动确认模式" : recognition?.allRequiredPassed ? "识别通过" : "等待识别"}</span></div><div className="browser-setting-list">{checks.map((check) => <article className="browser-setting-row" key={check.id}><div className="browser-setting-info"><span className={`browser-check ${check.status === "passed" ? "passed" : ""}`}>{check.status === "passed" ? "✓" : check.status === "manual" ? "·" : "○"}</span><div><b>{check.label}</b><small>{check.detail}</small><div className="browser-reading"><span>目标：{check.expected}</span><span>当前：{check.observed}</span></div></div><span className={`browser-status ${check.status}`}>{statusLabel(check.status)}</span></div><button className="profile-action" onClick={() => onOpenSetting(settingTarget(check.id))}>{check.id === "webrtc" ? "打开检测页" : "打开对应设置"}<span>↗</span></button></article>)}</div><div className="browser-recognition-actions"><button className="secondary-button compact" onClick={onRecognize} disabled={isRecognizing}>{isRecognizing ? "正在只读识别…" : recognition ? "重新识别设置" : "识别当前设置"}<span>↻</span></button><small>浏览器修改后需要完全退出，设置才会稳定写入 Preferences。</small></div>{recognition && !recognition.manualOnly && !recognition.allRequiredPassed && <p className="warning-note">还有项目未符合目标；请打开对应设置页修改，再重新识别。safecc 不会把人工点击当成配置成功。</p>}{recognition?.manualOnly && <label className="confirm-line"><input type="checkbox" checked={manualConfirmed} onChange={(event) => setManualConfirmed(event.target.checked)} /><span>我已逐项打开对应设置并完成手动修改；接受这里只记录人工确认，不宣称自动识别通过。</span></label>}{manualError && <p className="error-note">{manualError}</p>}{recognitionError && <p className="error-note">{recognitionError}</p>}<label className="confirm-line"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>我确认已按目标地区处理以上设置，并理解 WebRTC UDP 与最终出口仍需在检测页复核。</span></label>{result && <div className="backup-result"><span className="check-icon passed">✓</span><div><b>{result.status === "applied" ? "浏览器环境已写入并复核" : "浏览器步骤已记录"}</b><small>{result.status === "applied" ? `${result.changed.join("；")}；本地快照 ${result.backupId ?? "未生成"}；请重启浏览器。` : result.warnings[0]}</small></div></div>}{error && <p className="error-note">{error}</p>}<button className="secondary-button" onClick={onApply} disabled={!canComplete || isApplying}>{isApplying ? "正在保存浏览器步骤…" : applied ? "重新完成浏览器步骤" : "确认并完成浏览器步骤"}<span>→</span></button></section><aside className="card side-card"><span className="mini-label">识别边界</span><h3>只读，不碰账号数据</h3><p className="side-copy">Chrome / Edge 只读取 Preferences 中的语言、定位默认值和 DoH 模式；不读取 Cookie、密码、历史或站点内容。Safari / Firefox 保持人工确认。</p><div className="preview-list"><div><span>目标地区</span><b>{plan?.targetRegion ?? "读取中…"}</b></div><div><span>语言偏好</span><b>{plan?.language ?? "—"}</b></div><div><span>识别模式</span><b>{recognition?.manualOnly ? "人工确认" : "Preferences 只读"}</b></div></div>{(recognition?.warnings ?? plan?.manualSteps ?? []).map((step) => <p className="side-copy" key={step}>· {step}</p>)}</aside></div>;
 }
 
 function CacheStep({ plan, approval, setApproval, result, error, isCleaning, confirmed, onClean }: { plan: CachePlan | null; approval: boolean; setApproval: (value: boolean) => void; result: CacheCleanupResult | null; error: string | null; isCleaning: boolean; confirmed: boolean; onClean: () => void }) {

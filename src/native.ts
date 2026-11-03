@@ -137,6 +137,36 @@ export type BrowserApplyResult = {
   warnings: string[];
 };
 
+export type BrowserSettingCheck = {
+  id: string;
+  label: string;
+  status: "passed" | "attention" | "manual";
+  expected: string;
+  observed: string;
+  detail: string;
+  settingUrl: string;
+};
+
+export type BrowserRecognitionResult = {
+  status: "passed" | "attention" | "manual";
+  browser: string;
+  browserLabel: string;
+  profilePath: string;
+  checks: BrowserSettingCheck[];
+  allRequiredPassed: boolean;
+  manualOnly: boolean;
+  warnings: string[];
+};
+
+export type FingerprintEngine = {
+  available: boolean;
+  source: string;
+  label: string;
+  version: string;
+  enginePath: string;
+  notes: string[];
+};
+
 export type CacheTarget = {
   label: string;
   exists: boolean;
@@ -239,6 +269,7 @@ export type EnvironmentProfile = {
   previewOnly: boolean;
   isolation: string[];
   warnings: string[];
+  fingerprintSeed: number;
 };
 
 const inTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -475,6 +506,59 @@ export async function applyBrowserEnvironment(targetRegion: string, defaultBrows
   };
 }
 
+export async function recognizeBrowserEnvironment(targetRegion: string, defaultBrowser: string | null): Promise<BrowserRecognitionResult> {
+  if (inTauri()) return invoke<BrowserRecognitionResult>("recognize_browser_environment", { targetRegion, defaultBrowser });
+  const selected = getRegionConfig(targetRegion);
+  const checks: BrowserSettingCheck[] = [
+    { id: "language", label: "语言", status: "attention", expected: selected.browserLanguage, observed: "浏览器预览未读取", detail: "浏览器预览不会读取或写入本机 Preferences。", settingUrl: "chrome://settings/languages" },
+    { id: "location", label: "定位权限", status: "attention", expected: "阻止网站读取位置", observed: "浏览器预览未读取", detail: "请在 Tauri 本机窗口中打开设置页并修改。", settingUrl: "chrome://settings/content/location" },
+    { id: "dns", label: "安全 DNS", status: "attention", expected: "关闭，由 Clash TUN 接管", observed: "浏览器预览未读取", detail: "请在 Tauri 本机窗口中打开设置页并修改。", settingUrl: "chrome://settings/security" },
+    { id: "webrtc", label: "WebRTC UDP", status: "manual", expected: "与代理出口一致", observed: "需用真实检测页确认", detail: "安全 DNS、WebRTC UDP 和最终出口以真实检测页为准。", settingUrl: "https://ip.net.coffee/claude/" },
+  ];
+  return {
+    status: "attention",
+    browser: "unknown",
+    browserLabel: "浏览器预览",
+    profilePath: "—",
+    checks,
+    allRequiredPassed: false,
+    manualOnly: false,
+    warnings: ["浏览器预览不会读取或写入浏览器偏好", "请在 Tauri 本机窗口中打开设置页、手动修改后重新识别"],
+  };
+}
+
+export async function openBrowserSettingPage(target: "languages" | "location" | "dns" | "verify", defaultBrowser: string | null): Promise<void> {
+  if (inTauri()) {
+    await invoke<void>("open_browser_setting_page_for", { target, defaultBrowser });
+    return;
+  }
+  const urls = {
+    languages: "chrome://settings/languages",
+    location: "chrome://settings/content/location",
+    dns: "chrome://settings/security",
+    verify: "https://ip.net.coffee/claude/",
+  };
+  window.open(urls[target], "_blank", "noopener,noreferrer");
+}
+
+export async function getFingerprintEngine(): Promise<FingerprintEngine> {
+  if (inTauri()) return invoke<FingerprintEngine>("get_fingerprint_engine");
+  return {
+    available: false,
+    source: "preview",
+    label: "浏览器预览不检测本机引擎",
+    version: "—",
+    enginePath: "",
+    notes: ["真实 Tauri 窗口会检测本机已安装的 Fingerprint Chromium。", "普通 Chrome / Edge 独立 Profile 不会被标记为指纹浏览器。"],
+  };
+}
+
+export async function openFingerprintBrowser(profileId: string, confirm: boolean): Promise<string> {
+  if (inTauri()) return invoke<string>("open_fingerprint_browser", { profileId, confirm });
+  if (!confirm) throw new Error("启动指纹浏览器前必须确认");
+  throw new Error("浏览器预览不会启动本机指纹浏览器，请在 Tauri 本机窗口中操作");
+}
+
 export async function getCachePlan(): Promise<CachePlan> {
   if (inTauri()) return invoke<CachePlan>("get_cache_plan");
   return {
@@ -562,6 +646,7 @@ export async function createEnvironmentProfile(name: string, targetRegion: strin
       "独立档案不等于独立设备：硬件指纹、浏览器引擎特征和公网 IP 仍可能相关",
       "同一时刻 Clash Verge Rev 只能使用一个活动出口；账号隔离不会创建多个物理网络",
     ],
+    fingerprintSeed: 1,
   };
   window.localStorage.setItem(PREVIEW_PROFILES_KEY, JSON.stringify([...profiles, profile]));
   return profile;

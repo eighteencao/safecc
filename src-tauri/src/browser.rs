@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +62,31 @@ pub struct BrowserApplyResult {
     pub changed: Vec<String>,
     pub backup_id: Option<String>,
     pub requires_restart: bool,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserSettingCheck {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    pub expected: String,
+    pub observed: String,
+    pub detail: String,
+    pub setting_url: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserRecognitionResult {
+    pub status: String,
+    pub browser: String,
+    pub browser_label: String,
+    pub profile_path: String,
+    pub checks: Vec<BrowserSettingCheck>,
+    pub all_required_passed: bool,
+    pub manual_only: bool,
     pub warnings: Vec<String>,
 }
 
@@ -160,6 +186,238 @@ pub fn apply(
             "WebRTC UDP、安全 DNS 和实际出口仍以验收页面为准".to_string(),
         ],
     })
+}
+
+pub fn recognize(
+    target_region: String,
+    default_browser: Option<String>,
+) -> Result<BrowserRecognitionResult, String> {
+    let browser = classify(default_browser.as_deref());
+    let Some(profile_path) = profile_path(browser) else {
+        return Ok(manual_recognition(browser, &target_region));
+    };
+    if !profile_path.is_file() {
+        return Ok(manual_recognition(browser, &target_region));
+    }
+    let original = fs::read(&profile_path).map_err(|error| io_error("只读浏览器偏好", error))?;
+    let preferences: Value = serde_json::from_slice(&original)
+        .map_err(|_| "浏览器 Preferences 当前不是可安全解析的 JSON，已停止识别".to_string())?;
+    let expected_language = language_for(&target_region);
+    let observed_language = preferences["intl"]["accept_languages"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    let observed_geolocation = preferences["profile"]["default_content_setting_values"]
+        ["geolocation"]
+        .as_i64()
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "未写入".to_string());
+    let observed_doh = preferences["dns_over_https"]["mode"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    let checks = vec![
+        BrowserSettingCheck {
+            id: "language".to_string(),
+            label: "语言".to_string(),
+            status: if observed_language == expected_language {
+                "passed"
+            } else {
+                "attention"
+            }
+            .to_string(),
+            expected: expected_language.clone(),
+            observed: if observed_language.is_empty() {
+                "未写入".to_string()
+            } else {
+                observed_language
+            },
+            detail: "打开浏览器语言设置，把目标语言移到首位并保存。".to_string(),
+            setting_url: setting_url(browser, "languages"),
+        },
+        BrowserSettingCheck {
+            id: "location".to_string(),
+            label: "定位权限".to_string(),
+            status: if observed_geolocation == "2" {
+                "passed"
+            } else {
+                "attention"
+            }
+            .to_string(),
+            expected: "阻止网站读取位置".to_string(),
+            observed: if observed_geolocation == "2" {
+                "已阻止".to_string()
+            } else {
+                observed_geolocation
+            },
+            detail: "打开网站设置 → 位置信息，选择“不允许网站查看您的位置”。".to_string(),
+            setting_url: setting_url(browser, "location"),
+        },
+        BrowserSettingCheck {
+            id: "dns".to_string(),
+            label: "安全 DNS".to_string(),
+            status: if observed_doh == "off" {
+                "passed"
+            } else {
+                "attention"
+            }
+            .to_string(),
+            expected: "关闭，由 Clash TUN 接管".to_string(),
+            observed: if observed_doh.is_empty() {
+                "未写入（可能默认自动）".to_string()
+            } else if observed_doh == "off" {
+                "已关闭".to_string()
+            } else {
+                observed_doh
+            },
+            detail: "打开隐私和安全 → 安全 DNS，关闭“使用安全 DNS”。".to_string(),
+            setting_url: setting_url(browser, "dns"),
+        },
+        BrowserSettingCheck {
+            id: "webrtc".to_string(),
+            label: "WebRTC UDP".to_string(),
+            status: "manual".to_string(),
+            expected: "与代理出口一致".to_string(),
+            observed: "需用真实检测页确认".to_string(),
+            detail: "safecc 不从 Preferences 推断 WebRTC UDP；请在检测页复核。".to_string(),
+            setting_url: "https://ip.net.coffee/claude/".to_string(),
+        },
+    ];
+    let all_required_passed = checks
+        .iter()
+        .filter(|check| check.id != "webrtc")
+        .all(|check| check.status == "passed");
+    Ok(BrowserRecognitionResult {
+        status: if all_required_passed { "passed" } else { "attention" }.to_string(),
+        browser: browser.id().to_string(),
+        browser_label: browser.label().to_string(),
+        profile_path: profile_path.display().to_string(),
+        checks,
+        all_required_passed,
+        manual_only: false,
+        warnings: vec![
+            "只读识别 Preferences 中的语言、定位默认值和安全 DNS 模式；不读取 Cookie、密码、历史或站点内容".to_string(),
+            "浏览器运行时修改可能尚未落盘；请完全退出浏览器后重新识别".to_string(),
+            "WebRTC UDP 和最终出口仍以真实检测页为准".to_string(),
+        ],
+    })
+}
+
+fn manual_recognition(browser: BrowserKind, target_region: &str) -> BrowserRecognitionResult {
+    let expected_language = language_for(target_region);
+    let checks = vec![
+        BrowserSettingCheck {
+            id: "language".to_string(),
+            label: "语言".to_string(),
+            status: "manual".to_string(),
+            expected: expected_language,
+            observed: "无安全只读入口".to_string(),
+            detail: "在浏览器设置中把目标语言移到首位，完成后勾选人工确认。".to_string(),
+            setting_url: setting_url(browser, "languages"),
+        },
+        BrowserSettingCheck {
+            id: "location".to_string(),
+            label: "定位权限".to_string(),
+            status: "manual".to_string(),
+            expected: "阻止网站读取位置".to_string(),
+            observed: "无安全只读入口".to_string(),
+            detail: "在浏览器网站设置中阻止位置访问，完成后勾选人工确认。".to_string(),
+            setting_url: setting_url(browser, "location"),
+        },
+        BrowserSettingCheck {
+            id: "dns".to_string(),
+            label: "安全 DNS".to_string(),
+            status: "manual".to_string(),
+            expected: "关闭，由 Clash TUN 接管".to_string(),
+            observed: "无安全只读入口".to_string(),
+            detail: "关闭浏览器安全 DNS，完成后勾选人工确认。".to_string(),
+            setting_url: setting_url(browser, "dns"),
+        },
+        BrowserSettingCheck {
+            id: "webrtc".to_string(),
+            label: "WebRTC UDP".to_string(),
+            status: "manual".to_string(),
+            expected: "与代理出口一致".to_string(),
+            observed: "需用真实检测页确认".to_string(),
+            detail: "safecc 不伪造 WebRTC UDP 结果；请打开检测页复核。".to_string(),
+            setting_url: "https://ip.net.coffee/claude/".to_string(),
+        },
+    ];
+    BrowserRecognitionResult {
+        status: "manual".to_string(),
+        browser: browser.id().to_string(),
+        browser_label: browser.label().to_string(),
+        profile_path: "—".to_string(),
+        checks,
+        all_required_passed: false,
+        manual_only: true,
+        warnings: vec![
+            format!(
+                "{} 没有 safecc 可安全只读的统一配置文件；这里只保留手动确认，不宣称自动识别通过",
+                browser.label()
+            ),
+            "请在浏览器设置页逐项修改，并用真实检测页复核 DNS / WebRTC UDP".to_string(),
+        ],
+    }
+}
+
+pub fn open_setting_page(target: String, default_browser: Option<String>) -> Result<(), String> {
+    let browser = classify(default_browser.as_deref());
+    let destination = match target.as_str() {
+        "languages" => setting_url(browser, "languages"),
+        "location" => setting_url(browser, "location"),
+        "dns" => setting_url(browser, "dns"),
+        "verify" => "https://ip.net.coffee/claude/".to_string(),
+        _ => return Err("不允许打开未登记的浏览器设置页".to_string()),
+    };
+
+    let destination = if matches!(browser, BrowserKind::Firefox | BrowserKind::Safari) {
+        browser_help_url(browser)
+    } else {
+        destination
+    };
+
+    #[cfg(target_os = "macos")]
+    let result = Command::new("/usr/bin/open").arg(destination).status();
+
+    #[cfg(target_os = "windows")]
+    let result = Command::new("cmd")
+        .args(["/C", "start", "", &destination])
+        .status();
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let result = Command::new("xdg-open").arg(destination).status();
+
+    match result {
+        Ok(status) if status.success() => Ok(()),
+        _ => Err("无法打开浏览器设置页；请从浏览器菜单手动进入对应设置".to_string()),
+    }
+}
+
+fn setting_url(browser: BrowserKind, setting: &str) -> String {
+    let prefix = if browser == BrowserKind::Edge {
+        "edge://settings/"
+    } else {
+        "chrome://settings/"
+    };
+    match setting {
+        "languages" => format!("{prefix}languages"),
+        "location" => format!("{prefix}content/location"),
+        "dns" => format!("{prefix}security"),
+        _ => "https://ip.net.coffee/claude/".to_string(),
+    }
+}
+
+fn browser_help_url(browser: BrowserKind) -> String {
+    match browser {
+        BrowserKind::Firefox => {
+            "https://support.mozilla.org/zh-CN/kb/change-firefox-languages-and-locales".to_string()
+        }
+        BrowserKind::Safari => {
+            "https://support.apple.com/zh-cn/guide/safari/welcome/mac".to_string()
+        }
+        _ => "https://ip.net.coffee/claude/".to_string(),
+    }
 }
 
 fn configure_preferences(preferences: &mut Value, language: &str) {
@@ -369,7 +627,9 @@ fn io_error(action: &str, error: io::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify, configure_preferences, language_for, BrowserKind};
+    use super::{
+        classify, configure_preferences, language_for, open_setting_page, setting_url, BrowserKind,
+    };
     use serde_json::json;
 
     #[test]
@@ -404,5 +664,28 @@ mod tests {
         assert_eq!(preferences["dns_over_https"]["mode"], "off");
         assert_eq!(preferences["profile"]["name"], "fixture");
         assert_eq!(preferences["cookies"]["last_session"], "untouched");
+    }
+
+    #[test]
+    fn setting_pages_are_fixed_allowlisted_urls() {
+        assert_eq!(
+            setting_url(BrowserKind::Chrome, "languages"),
+            "chrome://settings/languages"
+        );
+        assert_eq!(
+            setting_url(BrowserKind::Edge, "dns"),
+            "edge://settings/security"
+        );
+        assert!(open_setting_page("https://example.com".to_string(), None).is_err());
+        assert!(open_setting_page("../../etc/passwd".to_string(), None).is_err());
+    }
+
+    #[test]
+    fn manual_recognition_never_claims_automatic_pass() {
+        let result = super::manual_recognition(super::BrowserKind::Safari, "日本 · 东京");
+        assert_eq!(result.status, "manual");
+        assert!(result.manual_only);
+        assert!(!result.all_required_passed);
+        assert!(result.checks.iter().all(|check| check.status == "manual"));
     }
 }

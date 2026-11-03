@@ -118,3 +118,21 @@ button:disabled { cursor: not-allowed; opacity: .4; }
 .profile-warning { margin-top: 22px; }
 .profile-warning p { color: #b9a681; }
 .profile-side-note { margin-top: 20px; }
+.fingerprint-engine-box { margin-top: 18px; padding: 13px; border: 1px solid #354250; border-radius: 8px; background: rgba(16, 22, 29, .42); }
+.fingerprint-engine-box strong { display: block; color: #d5dee6; font-size: 11px; margin-top: 7px; }
+.fingerprint-engine-box small { display: block; color: #7d8b9a; font-size: 9px; line-height: 1.55; margin-top: 7px; }
+.fingerprint-engine-box p { color: #788595; font-size: 9px; line-height: 1.55; margin: 7px 0 0; }
+.browser-setting-list { margin-top: 18px; border-top: 1px solid #2b3642; }
+.browser-setting-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #2b3642; }
+.browser-setting-info { display: flex; align-items: flex-start; gap: 11px; flex: 1; min-width: 0; }
+.browser-setting-info > div { flex: 1; min-width: 0; }
+.browser-setting-info b { display: block; color: #cbd5de; font-size: 11px; }
+.browser-setting-info small { display: block; color: #6d7b8b; font-size: 9px; line-height: 1.5; margin-top: 4px; }
+.browser-reading { display: flex; flex-wrap: wrap; gap: 5px 14px; margin-top: 7px; color: #8794a3; font: 8px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.browser-status { padding: 4px 7px; border: 1px solid #43515f; border-radius: 100px; color: #9aa7b5; font: 8px 'DM Mono', monospace; white-space: nowrap; }
+.browser-status.passed { color: #c4f06d; border-color: rgba(196, 240, 109, .4); }
+.browser-status.manual { color: #b9a681; border-color: rgba(185, 166, 129, .4); }
+.browser-setting-row .profile-action { flex: 0 0 auto; display: flex; gap: 7px; align-items: center; }
+.browser-recognition-actions { display: flex; align-items: center; gap: 13px; margin-top: 16px; flex-wrap: wrap; }
+.browser-recognition-actions small { color: #6f7d8e; font-size: 9px; line-height: 1.5; }
+.warning-note { color: #d0b987; font-size: 10px; line-height: 1.6; margin: 15px 0 0; }

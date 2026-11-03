@@ -2,6 +2,7 @@ use serde::Serialize;
 
 mod backup;
 mod browser;
+mod browser_engine;
 mod cache;
 mod clash;
 mod deployment;
@@ -194,6 +195,32 @@ fn apply_browser_environment(
 }
 
 #[tauri::command]
+fn recognize_browser_environment(
+    target_region: String,
+    default_browser: Option<String>,
+) -> Result<browser::BrowserRecognitionResult, String> {
+    browser::recognize(target_region, default_browser)
+}
+
+#[tauri::command]
+fn open_browser_setting_page_for(
+    target: String,
+    default_browser: Option<String>,
+) -> Result<(), String> {
+    browser::open_setting_page(target, default_browser)
+}
+
+#[tauri::command]
+fn get_fingerprint_engine() -> browser_engine::FingerprintEngine {
+    browser_engine::detect()
+}
+
+#[tauri::command]
+fn open_fingerprint_browser(profile_id: String, confirm: bool) -> Result<String, String> {
+    profiles::open_fingerprint_browser(profile_id, confirm)
+}
+
+#[tauri::command]
 fn get_cache_plan() -> cache::CachePlan {
     cache::plan()
 }
@@ -262,6 +289,10 @@ pub fn run() {
             deploy_vps,
             get_browser_change_plan,
             apply_browser_environment,
+            recognize_browser_environment,
+            open_browser_setting_page_for,
+            get_fingerprint_engine,
+            open_fingerprint_browser,
             get_cache_plan,
             clear_safe_cache,
             record_verification,

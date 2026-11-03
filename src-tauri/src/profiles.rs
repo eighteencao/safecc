@@ -25,6 +25,7 @@ pub struct EnvironmentProfile {
     pub preview_only: bool,
     pub isolation: Vec<String>,
     pub warnings: Vec<String>,
+    pub fingerprint_seed: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -172,6 +173,31 @@ pub fn open(profile_id: String, action: String, confirmed: bool) -> Result<(), S
     }
 }
 
+pub fn open_fingerprint_browser(profile_id: String, confirmed: bool) -> Result<String, String> {
+    if !confirmed {
+        return Err("启动指纹浏览器前必须确认".to_string());
+    }
+    let root = profile_root_or_default();
+    let index = read_index(&root)?;
+    let profile = index
+        .profiles
+        .iter()
+        .find(|profile| profile.id == profile_id)
+        .ok_or_else(|| "未找到该本地账号档案".to_string())?;
+    let directory = profile_directory_at(&root, &profile.id)?;
+    reject_symlink(&directory)?;
+    let browser_dir = directory.join("browser-profile");
+    reject_symlink(&browser_dir)?;
+    if !browser_dir.is_dir() {
+        return Err("隔离浏览器档案目录不存在".to_string());
+    }
+    crate::browser_engine::launch(
+        &browser_dir,
+        &profile.target_region,
+        fingerprint_seed(&profile.id),
+    )
+}
+
 fn profile_summary(profile: &StoredProfile, root: &Path) -> Result<EnvironmentProfile, String> {
     if !is_safe_profile_id(&profile.id) {
         return Err("档案索引包含不安全的标识，已停止读取".to_string());
@@ -196,6 +222,7 @@ fn profile_summary(profile: &StoredProfile, root: &Path) -> Result<EnvironmentPr
         preview_only: false,
         isolation: isolation_notes(),
         warnings: shared_environment_warnings(),
+        fingerprint_seed: fingerprint_seed(&profile.id),
     })
 }
 
@@ -213,6 +240,20 @@ fn shared_environment_warnings() -> Vec<String> {
         "独立档案不等于独立设备：硬件指纹、浏览器引擎特征和公网 IP 仍可能相关".to_string(),
         "同一时刻 Clash Verge Rev 只能使用一个活动出口；账号隔离不会创建多个物理网络".to_string(),
     ]
+}
+
+fn fingerprint_seed(profile_id: &str) -> u32 {
+    let mut hash: u32 = 2166136261;
+    for byte in profile_id.as_bytes() {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(16777619);
+    }
+    // A stable nonzero 32-bit seed derived only from the local profile ID.
+    if hash == 0 {
+        1
+    } else {
+        hash
+    }
 }
 
 fn normalize_name(value: &str) -> Result<String, String> {
@@ -621,8 +662,8 @@ fn io_error(action: &str, error: io::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        browser_args, browser_language, create_at, is_safe_profile_id, normalize_name,
-        profile_directory_at,
+        browser_args, browser_language, create_at, fingerprint_seed, is_safe_profile_id,
+        normalize_name, profile_directory_at,
     };
     use std::fs;
     use std::path::Path;
@@ -662,6 +703,15 @@ mod tests {
     fn region_controls_browser_accept_language() {
         assert_eq!(browser_language("日本 · 东京"), "ja-JP,ja,en-US,en");
         assert_eq!(browser_language("美国 · 洛杉矶"), "en-US,en");
+    }
+
+    #[test]
+    fn fingerprint_seed_is_stable_and_nonzero() {
+        let first = fingerprint_seed("profile-1760000000000-42");
+        let second = fingerprint_seed("profile-1760000000000-42");
+        assert_eq!(first, second);
+        assert!(first > 0);
+        assert_ne!(first, fingerprint_seed("profile-1760000000000-43"));
     }
 
     #[test]

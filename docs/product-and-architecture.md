@@ -244,6 +244,8 @@ Draft
 ### M3：独立浏览器与身份管理评估
 
 - 独立浏览器 profile 与 Claude CLI `CLAUDE_CONFIG_DIR`；每账号档案只生成空目录和本地入口；
+- 默认浏览器逐项打开固定设置页，由用户手动修改；Chrome/Edge 随后只读识别 `Preferences`，Safari/Firefox 保持人工确认模式；
+- 检测到本机兼容 Fingerprint Chromium 引擎时，可为每个档案注入独立资料目录、稳定种子、地区语言/时区和 WebRTC UDP 限制参数；不把普通 Profile 冒充指纹引擎；
 - 可选地区设置修复；
 - 身份备份/切换需另立威胁模型和恢复测试后再进入；
 - 代码签名、自动更新和崩溃恢复。

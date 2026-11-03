@@ -18,7 +18,7 @@ safecc 是面向 macOS 与 Windows 的本地环境检查和私人网络部署工
 
 ## 当前状态
 
-当前已具备可运行的 React/Vite 原型和 Tauri 2 原生壳；已接入本机 HTTPS 订阅预检与受保护快照、订阅确认后自动登记为 Clash Verge Rev remote profile、VPS SSH 主机指纹预检与 Debian 12/13 只读检查、网络部署脚本分阶段部署与私有 Clash YAML 取回、Clash 配置快照/恢复、按地区申请系统权限与地区快照恢复、Chrome/Edge 浏览器偏好备份与安全写入、标准缓存清理、按所选地区一键编排本机步骤、真实验收页确认及本地脱敏验收记录（含线路别名、托管版本和逐项确认状态）。部署阶段不会在未确认时执行远端变更；真实 VPS 部署、Clash 运行态和检测页仍必须由用户在目标环境中复核。Safari/Firefox 自动写入和订阅后台自动更新仍需后续接入；Windows x64 同时提供 MSVC/CI 构建入口和 macOS 本地 GNU 交叉构建入口，安装包仍需在真实 Windows 机器上启动验收。首版范围、配置矩阵和验收条件见 [产品与技术方案](docs/product-and-architecture.md)。
+当前已具备可运行的 React/Vite 原型和 Tauri 2 原生壳；已接入本机 HTTPS 订阅预检与受保护快照、订阅确认后自动登记为 Clash Verge Rev remote profile、VPS SSH 主机指纹预检与 Debian 12/13 只读检查、网络部署脚本分阶段部署与私有 Clash YAML 取回、Clash 配置快照/恢复、按地区申请系统权限与地区快照恢复、默认浏览器逐项设置页引导与 Chrome/Edge `Preferences` 只读识别、标准缓存清理、按所选地区一键编排本机步骤、真实验收页确认及本地脱敏验收记录（含线路别名、托管版本和逐项确认状态）。部署阶段不会在未确认时执行远端变更；真实 VPS 部署、Clash 运行态和检测页仍必须由用户在目标环境中复核。Safari/Firefox 没有安全稳定的统一只读入口，流程会明确进入人工确认模式；订阅后台自动更新仍需后续接入。Windows x64 同时提供 MSVC/CI 构建入口和 macOS 本地 GNU 交叉构建入口，安装包仍需在真实 Windows 机器上启动验收。首版范围、配置矩阵和验收条件见 [产品与技术方案](docs/product-and-architecture.md)。
 
 ## 本地开发
 
@@ -34,11 +34,13 @@ cargo check --manifest-path src-tauri/Cargo.toml
 
 在 Apple Silicon macOS 上，当前可直接解压产物位于 [`artifacts/safecc-macos-arm64.app.zip`](artifacts/safecc-macos-arm64.app.zip)；解压后将 `safecc.app` 拖到“应用程序”即可。当前包为本机 ad-hoc 签名，首次打开若被 Gatekeeper 拦截，请在“系统设置 → 隐私与安全性”中手动允许。DMG 在当前机器上因磁盘映像设备不可用未生成。
 
-当前包 SHA-256：`83d2b9a84c0ec5d1b13aaf42320892a1265b0e896fc59938d77b34b9672aaed9`
+当前包 SHA-256：`4f2e03b229edb898a8e335bd9be7ba01f7da824bb1e5eb6818815200dcb482dc`
 
 ## 多账号档案的边界
 
 safecc 的账号档案用于隔离同一台设备上的 Claude CLI 配置目录和 Chromium 浏览器 Profile。创建时只生成空目录与启动脚本，不读取、复制或展示任何已有 Token、Cookie、密码或 Claude 页面内容。档案不是独立设备：系统时区、硬件指纹、浏览器引擎特征和同一时刻的 Clash 活动出口仍由整机共享。不同地区的档案需要切换 Clash 出口，并重新执行本机地区和验收步骤；safecc 不把档案隔离表述为账号安全保证。
+
+账号档案页还会检测本机是否已安装兼容的 Fingerprint Chromium 引擎（包括已安装的 CCBaga-B）。检测到时，每个档案可以用独立 `user-data-dir`、稳定指纹种子、目标地区语言/时区和 WebRTC UDP 限制参数启动；普通 Chrome/Edge 独立 Profile 不会被标成指纹浏览器。当前 safecc 自身安装包不分发第三方 Chromium 二进制，Windows 指纹引擎尚未打包；引擎缺失时仍使用普通独立 Chromium Profile 隔离 Cookie 和站点数据。
 
 Windows x64 构建入口已固定为 `scripts/build-windows.ps1`（也可双击 `scripts/build-windows.cmd`）。它会检查 Rust MSVC 目标、执行 `npm ci`、前端构建和 Tauri NSIS 打包，最后输出安装包 SHA-256。Windows 机器上运行：
 
@@ -54,5 +56,5 @@ Windows x64 构建入口已固定为 `scripts/build-windows.ps1`（也可双击 
 ./scripts/build-windows-cross.sh
 ```
 
-该本地交叉构建使用 `x86_64-pc-windows-gnu`，输出 `artifacts/safecc-windows-x64-setup.exe` 和对应的 SHA-256 文件；当前 SHA-256 为 `c85d106f0a8dd56b352f73eea8632067db05e02fd871e8bf8df74e421444c595`。Windows 机器与 CI 仍优先使用 MSVC/NSIS 流程。安装包需要在真实 Windows 机器上启动并完成系统权限、Clash 运行态和检测页复核。
+该本地交叉构建使用 `x86_64-pc-windows-gnu`，输出 `artifacts/safecc-windows-x64-setup.exe` 和对应的 SHA-256 文件；当前 SHA-256 为 `11fa742668e5ac6b784fb425a34d49c0cdb1b05b379da4468c34c4fff5da779b`。Windows 机器与 CI 仍优先使用 MSVC/NSIS 流程。安装包需要在真实 Windows 机器上启动并完成系统权限、Clash 运行态和检测页复核。
 
